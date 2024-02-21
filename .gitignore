@@ -1,7 +1,6 @@
 .idea
 data
 __pycache__
-docker-compose.yml
 
 *.bin
 *.sqlite3
@@ -10,3 +9,5 @@ wine
 diann
 MRC-Astral
 *.exe
+staticfiles
+media

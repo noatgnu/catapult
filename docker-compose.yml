@@ -1,0 +1,73 @@
+# a docker-compose file with a postgres 14 service
+# celery -A catapult_backend worker --loglevel=INFO -P solo
+
+version: '3.8'
+services:
+  nginxcatapult:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/Dockerfile-nginx
+    container_name: nginxcatapult
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - ./media:/media/
+      - ./staticfiles:/static/
+    depends_on:
+      - catapult
+    networks:
+      - catapult-net
+  catapult:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/Dockerfile
+    container_name: catapult
+    ports:
+      - "8000:8000"
+    environment:
+      - POSTGRES_NAME=postgres
+      - POSTGRES_DB=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_HOST=dbcatapult
+      - REDIS_HOST=rediscatapult
+      - CORS_ORIGIN_WHITELIST=http://localhost,http://localhost:4200,http://172.31.0.5
+      - ALLOWED_HOSTS=localhost,172.31.0.5
+    networks:
+      - catapult-net
+    volumes:
+      - ./media:/app/media
+      - ./staticfiles:/app/staticfiles
+    depends_on:
+      - dbcatapult
+      - rediscatapult
+  dbcatapult:
+    container_name: dbcatapult
+    image: postgres:14
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres
+    ports:
+    - "5432:5432"
+    volumes:
+    - ./data:/var/lib/postgresql/data
+    networks:
+      - catapult-net
+  rediscatapult:
+    container_name: rediscatapult
+    build:
+      context: .
+      dockerfile: ./dockerfiles/Dockerfile-redis
+    restart: always
+    environment:
+      - REDIS_PASSWORD=redis
+    ports:
+      - "6379:6379"
+    networks:
+      - catapult-net
+
+networks:
+    catapult-net:
