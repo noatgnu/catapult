@@ -247,5 +247,5 @@ CELERY_RESULT_BACKEND = 'django-db'
 CELERY_CACHE_BACKEND = 'default'
 
 DIANN_PATH = os.environ.get("DIANN_PATH", r"C:\DIA-NN\1.8.1\DiaNN.exe")
-CPU_COUNT = os.environ.get("CPU_COUNT", str(os.cpu_count()))
+CPU_COUNT = os.environ.get("CPU_COUNT", str(os.cpu_count()-3))
 DEFAULT_DIANN_PARAMS = "--min-fr-mz 200 --max-fr-mz 1800 --cut K*,R* --missed-cleavages 2 --min-pep-len 7 --max-pep-len 30 --min-pr-mz 300 --max-pr-mz 1800 --min-pr-charge 1 --max-pr-charge 4 --unimod4 --var-mods 1 --var-mod UniMod:35,15.994915,M --mass-acc 20 --mass-acc-ms1 20 --individual-mass-acc --individual-windows --reanalyse --smart-profiling --peak-center --no-ifs-removal"
