@@ -6,3 +6,7 @@ docker-compose.yml
 *.bin
 *.sqlite3
 *.exe
+wine
+diann
+MRC-Astral
+*.exe

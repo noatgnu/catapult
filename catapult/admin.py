@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from catapult.models import Experiment, File, FolderWatchingLocation
+from catapult.models import Experiment, File, FolderWatchingLocation, Analysis
 
 
 # Register your models here.
@@ -15,4 +15,8 @@ class FileAdmin(admin.ModelAdmin):
 
 @admin.register(FolderWatchingLocation)
 class FolderWatchingLocationAdmin(admin.ModelAdmin):
+    pass
+
+@admin.register(Analysis)
+class AnalysisAdmin(admin.ModelAdmin):
     pass

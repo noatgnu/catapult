@@ -9,6 +9,19 @@ readme = "README.md"
 python = "^3.10"
 django = "^5.0.2"
 watchdog = "^4.0.0"
+django-rq = "^2.10.1"
+django-redis = "^5.4.0"
+django-cors-headers = "^4.3.1"
+whitenoise = "^6.6.0"
+django-filter = "^23.5"
+channels = "^4.0.0"
+channels-redis = {extras = ["cryptography"], version = "^4.2.0"}
+django-dbbackup = "^4.1.0"
+django-tasks-scheduler = "^1.3.1"
+psycopg2-binary = "^2.9.9"
+celery = {extras = ["redis"], version = "^5.3.6"}
+eventlet = "^0.35.1"
+django-celery-results = "^2.5.1"
 
 
 [build-system]

@@ -12,7 +12,10 @@ class Watcher(FileSystemEventHandler):
     def __init__(self, network_folder, folder_path, file_extensions, *args, **kwargs):
         self.network_folder = network_folder
         self.folder_path = folder_path
+        folder = FolderWatchingLocation.objects.get_or_create(folder_path=folder_path)
+        self.folder_watching_location = folder[0]
         self.file_extensions = set(file_extensions)
+        print(self.folder_watching_location)
         super().__init__(*args, **kwargs)
 
     def process_file(self, file_path):
@@ -23,29 +26,56 @@ class Watcher(FileSystemEventHandler):
 
 
     def on_created(self, event):
-
-        if event.is_directory:
+        if self.folder_watching_location.ignore_term in event.src_path:
             return
+        if event.is_directory:
+            if not event.src_path.endswith(".d"):
+                return
         extension = os.path.splitext(event.src_path)[1]
         if extension in self.file_extensions:
             file_size, modified_time, created_time = self.process_file(event.src_path)
-            File.objects.get_or_create(file_path=event.src_path, )
+            # get parent folder
+            parent_folder = os.path.dirname(event.src_path)
+            exp = Experiment.objects.get_or_create(experiment_name=parent_folder)
+
+            File.objects.create(
+                file_path=event.src_path,
+                experiment=exp[0],
+                folder_watching_location=self.folder_watching_location,
+                size=file_size,
+            )
             print(f"{event.src_path} has been created at {modified_time}")
 
 
     def on_deleted(self, event):
+        if self.folder_watching_location.ignore_term in event.src_path:
+            return
+        File.objects.filter(file_path=event.src_path).delete()
         print(f"{event.src_path} has been deleted at {datetime.datetime.now()}")
 
     def on_modified(self, event):
-        if event.is_directory:
+        if self.folder_watching_location.ignore_term in event.src_path:
             return
+        if event.is_directory:
+            if not event.src_path.endswith(".d"):
+                return
         extension = os.path.splitext(event.src_path)[1]
         if extension in self.file_extensions:
             file_size, modified_time, created_time = self.process_file(event.src_path)
-
+            file = File.objects.get(file_path=event.src_path)
+            file.size = file_size
+            file.save()
             print(f"{event.src_path} has been modified at {created_time}")
 
     def on_moved(self, event):
+        if self.folder_watching_location.ignore_term in event.src_path:
+            return
+        if event.is_directory:
+            if not event.src_path.endswith(".d"):
+                return
+        extension = os.path.splitext(event.src_path)[1]
+        if extension in self.file_extensions:
+            File.objects.filter(file_path=event.src_path).update(file_path=event.dest_path)
         print(f"{event.src_path} to {event.dest_path} at {datetime.datetime.now()}")
 
     def start_watching(self):
