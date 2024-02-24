@@ -5,9 +5,9 @@ from rest_framework.parsers import JSONParser, FormParser, MultiPartParser
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from filters.mixins import FiltersMixin
-from catapult.models import File, Experiment, Analysis, FolderWatchingLocation, UserAPIKey, UploadedFile
+from catapult.models import File, Experiment, Analysis, FolderWatchingLocation, UserAPIKey, UploadedFile, CeleryTask
 from catapult.serializers import FileSerializer, ExperimentSerializer, AnalysisSerializer, \
-    FolderWatchLocationSerializer, UserAPIKeySerializer, UploadedFileSerializer
+    FolderWatchLocationSerializer, UserAPIKeySerializer, UploadedFileSerializer, CeleryTaskSerializer
 
 
 class FileViewSet(viewsets.ModelViewSet, FiltersMixin):
@@ -58,6 +58,20 @@ class ExperimentViewSet(viewsets.ModelViewSet, FiltersMixin):
             data=[{"value": v[0], "vendor": v[1]} for v in Experiment.vendor_choices],
             status=status.HTTP_200_OK
         )
+
+    @action(detail=True, methods=["get"])
+    def get_associated_files(self, request, pk=None):
+        experiment = self.get_object()
+        files = experiment.files.all()
+        data = FileSerializer(files, many=True, context={"request": request}).data
+        return Response(data=data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["get"])
+    def get_associated_analyses(self, request, pk=None):
+        experiment = self.get_object()
+        analyses = experiment.analysis.all()
+        data = AnalysisSerializer(analyses, many=True, context={"request": request}).data
+        return Response(data=data, status=status.HTTP_200_OK)
 
 class AnalysisViewSet(viewsets.ModelViewSet, FiltersMixin):
     queryset = Analysis.objects.all()
@@ -114,6 +128,13 @@ class AnalysisViewSet(viewsets.ModelViewSet, FiltersMixin):
             data=[{"value": v[0], "analysis_type": v[1]} for v in Analysis.analysis_type_choices],
             status=status.HTTP_200_OK
         )
+
+    @action(detail=True, methods=["get"])
+    def get_associated_tasks(self, request, pk=None):
+        analysis = self.get_object()
+        tasks = analysis.tasks.all()
+        data = CeleryTaskSerializer(tasks, many=True, context={"request": request}).data
+        return Response(data=data, status=status.HTTP_200_OK)
 
 
 class FolderWatchingLocationViewSet(viewsets.ModelViewSet, FiltersMixin):
@@ -185,3 +206,13 @@ class UploadedFileViewSet(viewsets.ModelViewSet, FiltersMixin):
         data_object = queryset.get(id=filter_id)
         self.check_object_permissions(self.request, data_object)
         return data_object
+
+
+class CeleryTaskViewSet(viewsets.ModelViewSet):
+    queryset = CeleryTask.objects.all()
+    serializer_class = CeleryTaskSerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
+    search_fields = ['task_id', 'status']
+    ordering_fields = ['created_at', 'updated_at', 'status', 'task_id', 'id']
+

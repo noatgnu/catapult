@@ -24,6 +24,7 @@ class AnalysisTask(Task):
     def before_start(self, task_id, args, kwargs):
         task = CeleryTask.objects.get_or_create(task_id=task_id)[0]
         task.status = "PENDING"
+        task.task_name = self.name
         task.save()
         super().before_start(task_id, args, kwargs)
 

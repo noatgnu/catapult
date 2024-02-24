@@ -18,7 +18,7 @@ from django.contrib import admin
 from django.urls import path, include
 from rest_framework import routers
 from catapult.viewsets import UserAPIKeyViewSets, ExperimentViewSet, AnalysisViewSet, FileViewSet, UploadedFileViewSet, \
-    FolderWatchingLocationViewSet
+    FolderWatchingLocationViewSet, CeleryTaskViewSet
 
 router = routers.DefaultRouter()
 
@@ -28,9 +28,10 @@ router.register(r'api/analyses', AnalysisViewSet)
 router.register(r'api/files', FileViewSet)
 router.register(r'api/uploadedfiles', UploadedFileViewSet)
 router.register(r'api/folderlocations', FolderWatchingLocationViewSet)
-
+router.register(r'api/tasks', CeleryTaskViewSet)
 
 from rest_framework.authtoken import views
+
 urlpatterns = [
     path('', include(router.urls)),
     path('admin/', admin.site.urls),
