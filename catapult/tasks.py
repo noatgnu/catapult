@@ -33,6 +33,7 @@ class AnalysisTask(Task):
 def run_analysis(self, analysis_id: int):
     analysis = Analysis.objects.get(id=analysis_id)
     task = CeleryTask.objects.get(task_id=self.request.id)
+    task.status = "RUNNING"
     task.analysis = analysis
     task.save()
     analysis.start_analysis()
