@@ -3,19 +3,27 @@ import time
 import os
 
 from django.core.management.base import BaseCommand, CommandError
+from django.db.models import Q
 from watchdog.observers.polling import PollingObserverVFS
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from catapult.models import File, FolderWatchingLocation, Experiment
 
+def get_folder_size(folder_path):
+    total_size = 0
+    for dirpath, dirnames, filenames in os.walk(folder_path):
+        for f in filenames:
+            fp = os.path.join(dirpath, f)
+            total_size += os.path.getsize(fp)
+    return total_size
+
 class Watcher(FileSystemEventHandler):
-    def __init__(self, network_folder, folder_path, file_extensions, *args, **kwargs):
-        self.network_folder = network_folder
-        self.folder_path = folder_path
-        folder = FolderWatchingLocation.objects.get_or_create(folder_path=folder_path)
-        self.folder_watching_location = folder[0]
-        self.file_extensions = set(file_extensions)
-        print(self.folder_watching_location)
+    def __init__(self, folder: FolderWatchingLocation, *args, **kwargs):
+        self.folder_path = folder.folder_path
+        self.file_extensions = set(folder.extensions.split(","))
+        self.ignore_term = folder.ignore_term
+        self.network_folder = folder.network_folder
+        self.folder_watching_location = folder
         super().__init__(*args, **kwargs)
 
     def process_file(self, file_path):
@@ -26,20 +34,27 @@ class Watcher(FileSystemEventHandler):
 
 
     def on_created(self, event):
-        if self.folder_watching_location.ignore_term in event.src_path:
+        if self.ignore_term in event.src_path:
             return
         if event.is_directory:
-            if not event.src_path.endswith(".d"):
-                return
+            return
         extension = os.path.splitext(event.src_path)[1]
         if extension in self.file_extensions:
             file_size, modified_time, created_time = self.process_file(event.src_path)
             # get parent folder
-            parent_folder = os.path.dirname(event.src_path)
+            file_location = event.src_path
+            if event.src_path.endswith(".d"):
+                root, file = os.path.split(event.src_path)
+                parent_folder = os.path.dirname(root)
+                file_location = root
+                file_size = get_folder_size(file_location)
+            else:
+                parent_folder = os.path.dirname(event.src_path)
+
             exp = Experiment.objects.get_or_create(experiment_name=parent_folder)
 
             File.objects.create(
-                file_path=event.src_path,
+                file_path=file_location.replace(self.folder_path, ""),
                 experiment=exp[0],
                 folder_watching_location=self.folder_watching_location,
                 size=file_size,
@@ -54,18 +69,18 @@ class Watcher(FileSystemEventHandler):
         print(f"{event.src_path} has been deleted at {datetime.datetime.now()}")
 
     def on_modified(self, event):
+        print(f"{event.src_path} has been modified")
         if self.folder_watching_location.ignore_term in event.src_path:
             return
         if event.is_directory:
-            if not event.src_path.endswith(".d"):
-                return
+            return
         extension = os.path.splitext(event.src_path)[1]
         if extension in self.file_extensions:
             file_size, modified_time, created_time = self.process_file(event.src_path)
             file = File.objects.get(file_path=event.src_path)
             file.size = file_size
             file.save()
-            print(f"{event.src_path} has been modified at {created_time}")
+
 
     def on_moved(self, event):
         if self.folder_watching_location.ignore_term in event.src_path:
@@ -78,19 +93,7 @@ class Watcher(FileSystemEventHandler):
             File.objects.filter(file_path=event.src_path).update(file_path=event.dest_path)
         print(f"{event.src_path} to {event.dest_path} at {datetime.datetime.now()}")
 
-    def start_watching(self):
-        if self.network_folder:
-            observer = PollingObserverVFS(os.stat, os.scandir, 1)
-        else:
-            observer = Observer()
-        observer.schedule(self, self.folder_path, recursive=True)
-        observer.start()
-        try:
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            observer.stop()
-        observer.join()
+
 
 
 class Command(BaseCommand):
@@ -98,19 +101,24 @@ class Command(BaseCommand):
     A command that watch a folder, check if the folder is a network folder and load data from provided txt files
     """
 
-    def add_arguments(self, parser):
-        parser.add_argument('folder_path', type=str, help='Path to the folder to be watched')
-        parser.add_argument('network_folder', type=bool, help='Is the folder a network folder?')
-        parser.add_argument('file_extensions', type=str, help='File extension to be watched. Delimited by comma. (.d,.wiff,.raw,.mzML,.dia)')
-
-
     def handle(self, *args, **options):
-        network_folder = options['network_folder']
-        folder_path = options['folder_path']
-        folder_path = os.path.abspath(folder_path)
-        #folder_path = folder_path.replace("\\", "/")
-        file_extensions = options['file_extensions'].split(",")
-        watcher = Watcher(network_folder, folder_path, file_extensions)
-        watcher.start_watching()
+        observers = []
+        for f in FolderWatchingLocation.objects.all():
+            w = Watcher(f)
+            if w.network_folder:
+                observer = PollingObserverVFS(os.stat, os.scandir, 1)
+            else:
+                observer = Observer()
+            observer.schedule(w, f.folder_path, recursive=True)
 
-
+            observers.append(observer)
+            observer.start()
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            for observer in observers:
+                observer.unschedule_all()
+                observer.stop()
+        for observer in observers:
+            observer.join()

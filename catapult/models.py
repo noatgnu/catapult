@@ -2,8 +2,15 @@ import os
 import subprocess
 from datetime import datetime
 
+from django.contrib.auth.models import User
 from django.db import models
+from rest_framework_api_key.crypto import KeyGenerator
+from rest_framework_api_key.models import BaseAPIKeyManager, AbstractAPIKey
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+from rest_framework.authtoken.models import Token
 
+from django.conf import settings
 from catapult_backend.settings import DIANN_PATH, CPU_COUNT, DEFAULT_DIANN_PARAMS
 
 
@@ -21,6 +28,7 @@ class FolderWatchingLocation(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     network_folder = models.BooleanField(default=False)
     ignore_term = models.TextField(blank=True, null=True, default="DONOTPROCESS")
+    extensions = models.TextField(blank=True, null=True, default=".raw,.wiff,.d,.mzML,.dia")
 
     class Meta:
         ordering = ["id"]
@@ -34,6 +42,7 @@ class FolderWatchingLocation(models.Model):
 
     def delete(self, using=None, keep_parents=False):
         super().delete(using=using, keep_parents=keep_parents)
+
 
 class Experiment(models.Model):
     """A data model for storing the experiment data with the following column:
@@ -55,7 +64,6 @@ class Experiment(models.Model):
     ]
     vendor = models.CharField(max_length=5, choices=vendor_choices, blank=True, null=True)
     sample_count = models.IntegerField(blank=True, null=True)
-
 
     class Meta:
         ordering = ["id"]
@@ -82,6 +90,7 @@ class Experiment(models.Model):
     def windows_only_vendor(self):
         return self.vendor not in [".d", ".mzML", ".dia"]
 
+
 class File(models.Model):
     """A data model for storing the file data with the following column:
     - file_path: the path of the file
@@ -102,7 +111,6 @@ class File(models.Model):
     size = models.BigIntegerField(blank=False, null=False)
     processing = models.BooleanField(default=False)
 
-
     class Meta:
         ordering = ["id"]
         app_label = "catapult"
@@ -115,6 +123,10 @@ class File(models.Model):
 
     def delete(self, using=None, keep_parents=False):
         super().delete(using=using, keep_parents=keep_parents)
+
+    def get_path(self):
+        return os.path.join(self.folder_watching_location.folder_path, self.file_path)
+
 
 class Analysis(models.Model):
     """A data model for storing analysis with the following column:
@@ -173,7 +185,7 @@ class Analysis(models.Model):
             commands.append("--use-quant")
             for file in self.experiment.files.filter(ready_for_processing=True):
                 commands.append("--f")
-                commands.append(file.file_path)
+                commands.append(file.get_path())
             commands.append("--threads")
             commands.append(CPU_COUNT)
             commands.append("--lib")
@@ -189,7 +201,6 @@ class Analysis(models.Model):
                 commands.append(os.path.join(self.output_folder, "report-lib.tsv"))
                 commands.append("--gen-spec-lib")
                 commands.append("--predictor")
-
 
         commands.extend(self.commands.split(" "))
         os.makedirs(os.path.join(self.output_folder, "temp"), exist_ok=True)
@@ -211,7 +222,7 @@ class Analysis(models.Model):
             commands.append("--use-quant")
             for file in self.experiment.files.filter(ready_for_processing=True):
                 commands.append("--f")
-                commands.append(file.file_path)
+                commands.append(file.get_path())
             commands.append("--threads")
             commands.append(CPU_COUNT)
             commands.append("--lib")
@@ -236,9 +247,99 @@ class Analysis(models.Model):
         else:
             raise ValueError("Analysis type not supported for quant file generation")
 
-
     def save(
-        self, force_insert=False, force_update=False, using=None, update_fields=None
+            self, force_insert=False, force_update=False, using=None, update_fields=None
     ):
         super().save(force_insert, force_update, using, update_fields)
         return self
+
+
+class UserAPIKeyManager(BaseAPIKeyManager):
+    key_generator = KeyGenerator(prefix_length=8, secret_key_length=128)
+
+
+class UserAPIKey(AbstractAPIKey):
+    """A data model for storing the user API key data with the following column:
+    - user: the user the API key belongs to
+    - api_key: the API key
+    - created_at: the date and time the API key was created
+    - updated_at: the date and time the API key was last updated
+    """
+    objects = UserAPIKeyManager()
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="api_keys")
+    api_key = models.CharField(max_length=40, unique=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class UploadedFile(models.Model):
+    """
+    A data model for storing the uploaded file data with the following column:
+    - file: the file
+    - created_at: the date and time the file was created
+    - updated_at: the date and time the file was last updated
+    - file_type: the type of file
+    - user: the user that uploaded the file
+    """
+    file = models.FileField(upload_to="upload/")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    file_type_choices = [
+        ("fasta", "Fasta"),
+        ("spectral_library", "Spectral Library"),
+    ]
+    file_type = models.CharField(max_length=20, choices=file_type_choices, blank=False, null=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, blank=True, null=True)
+
+    class Meta:
+        ordering = ["id"]
+        app_label = "catapult"
+
+    def __str__(self):
+        return f"{self.file.name}"
+
+    def __repr__(self):
+        return f"{self.file.name}"
+
+    def delete(self, using=None, keep_parents=False):
+        super().delete(using=using, keep_parents=keep_parents)
+
+
+class CeleryTask(models.Model):
+    """
+    A data model for storing the celery task data with the following column:
+    - task_id: the task id
+    - created_at: the date and time the task was created
+    - updated_at: the date and time the task was last updated
+    - task_name: the name of the task
+    - user: the user that created the task
+    - task_status: the status of the task
+    - analysis: the analysis the task belongs to
+    """
+    task_id = models.CharField(max_length=200, blank=False, null=False, unique=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    task_name = models.CharField(max_length=200, blank=False, null=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, blank=True, null=True)
+    status = models.CharField(max_length=20, blank=False, null=False)
+    analysis = models.ForeignKey(Analysis, on_delete=models.CASCADE, blank=True, null=True, related_name="tasks")
+    analysis_params = models.JSONField(blank=True, null=True)
+
+    class Meta:
+        ordering = ["id"]
+        app_label = "catapult"
+
+    def __str__(self):
+        return f"{self.task_name}"
+
+    def __repr__(self):
+        return f"{self.task_name}"
+
+    def delete(self, using=None, keep_parents=False):
+        super().delete(using=using, keep_parents=keep_parents)
+
+@receiver(post_save, sender=settings.AUTH_USER_MODEL)
+def create_auth_token(sender, instance=None, created=False, **kwargs):
+    if created:
+        Token.objects.create(user=instance)

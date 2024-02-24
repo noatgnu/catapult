@@ -42,7 +42,10 @@ INSTALLED_APPS = [
     #'django_rq',
     #'scheduler',
     'catapult.apps.CatapultConfig',
-    'django_celery_results'
+    'django_celery_results',
+    'rest_framework',
+    "rest_framework_api_key",
+    'rest_framework.authtoken',
 ]
 
 MIDDLEWARE = [
@@ -96,7 +99,6 @@ DATABASES = {
         }
     }
 }
-
 
 # Password validation
 # https://docs.djangoproject.com/en/5.0/ref/settings/#auth-password-validators
@@ -245,6 +247,35 @@ SCHEDULER_CONFIG = {
 
 CELERY_RESULT_BACKEND = 'django-db'
 CELERY_CACHE_BACKEND = 'default'
+
+# Django Rest Framework
+
+REST_FRAMEWORK = {
+    # Use Django's standard `django.contrib.auth` permissions,
+    # or allow read-only access for unauthenticated users.
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.DjangoModelPermissionsOrAnonReadOnly'
+    ],
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.TokenAuthentication',
+        'rest_framework.authentication.SessionAuthentication',
+        'catapult.authentication.APIKeyAuthentication',
+    ],
+    'DEFAULT_FILTER_BACKENDS': [
+        'django_filters.rest_framework.DjangoFilterBackend'
+    ],
+    'DEFAULT_PARSER_CLASSES': [
+        'rest_framework.parsers.JSONParser',
+    ],
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.LimitOffsetPagination',
+    'PAGE_SIZE': 20,
+}
+
+# Django Rest Framework API Key
+
+API_KEY_CUSTOM_HEADER = "HTTP_X_API_KEY"
+
+# Catapult specific settings
 
 DIANN_PATH = os.environ.get("DIANN_PATH", r"C:\DIA-NN\1.8.1\DiaNN.exe")
 CPU_COUNT = os.environ.get("CPU_COUNT", str(os.cpu_count()-3))

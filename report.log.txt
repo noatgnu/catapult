@@ -1,0 +1,134 @@
+DIA-NN 1.8.1 (Data-Independent Acquisition by Neural Networks)
+Compiled on Apr 14 2022 15:31:19
+Current date and time: Thu Feb 22 21:22:05 2024
+CPU: GenuineIntel 12th Gen Intel(R) Core(TM) i7-12700T
+SIMD instructions: AVX AVX2 FMA SSE4.1 SSE4.2 
+Logical CPU cores: 20
+C:\DIA-NN\1.8.1\DiaNN.exe --use-quant --f H:\watch_folder\MRC-Astral\1000ngHeLa_180SPD_ES906_20240214_01.raw --f H:\watch_folder\MRC-Astral\1000ngHeLa_180SPD_ES906_20240214_02.raw --f H:\watch_folder\MRC-Astral\1000ngHeLa_180SPD_ES906_20240214_03.raw --threads 17 --lib H:\MRC-Astral\20230102_UniprotSwissProt_Human_Cano+Iso - Ox+Ac.predicted.speclib --temp H:\MRC-Astral-Output\temp --min-fr-mz 200 --max-fr-mz 1800 --cut K*,R* --missed-cleavages 2 --min-pep-len 7 --max-pep-len 30 --min-pr-mz 300 --max-pr-mz 1800 --min-pr-charge 1 --max-pr-charge 4 --unimod4 --var-mods 1 --var-mod UniMod:35,15.994915,M --mass-acc 20 --mass-acc-ms1 20 --individual-mass-acc --individual-windows --reanalyse --smart-profiling --peak-center --no-ifs-removal 
+
+Existing .quant files will be used
+Thread number set to 17
+Min fragment m/z set to 200
+Max fragment m/z set to 1800
+In silico digest will involve cuts at K*,R*
+Maximum number of missed cleavages set to 2
+Min peptide length set to 7
+Max peptide length set to 30
+Min precursor m/z set to 300
+Max precursor m/z set to 1800
+Min precursor charge set to 1
+Max precursor charge set to 4
+Cysteine carbamidomethylation enabled as a fixed modification
+Maximum number of variable modifications set to 1
+Modification UniMod:35 with mass delta 15.9949 at M will be considered as variable
+Mass accuracy will be determined separately for different runs
+Scan windows will be inferred separately for different runs
+A spectral library will be created from the DIA runs and used to reanalyse them; .quant files will only be saved to disk during the first step
+When generating a spectral library, in silico predicted spectra will be retained if deemed more reliable than experimental ones
+Fixed-width center of each elution peak will be used for quantification
+Interference removal from fragment elution curves disabled
+Mass accuracy will be fixed to 2e-05 (MS2) and 2e-05 (MS1)
+
+3 files will be processed
+[0:00] Loading spectral library H:\MRC-Astral\20230102_UniprotSwissProt_Human_Cano+Iso - Ox+Ac.predicted.speclib
+[0:06] Library annotated with sequence database(s): \\lfs.lifesci.dundee.ac.uk\lfs\mrc-data\proteinchem\Fred Lamoliatte\Database\Protein\20230102_UniprotSwissProt_Human_Cano+Iso.fasta
+[0:06] Gene names missing for some isoforms
+[0:06] Library contains 20381 proteins, and 20164 genes
+[0:07] Spectral library loaded: 42362 protein isoforms, 68095 protein groups and 6161647 precursors in 1916766 elution groups.
+[0:07] Initialising library
+
+[0:10] First pass: generating a spectral library from DIA data
+[0:10] Cross-run analysis
+[0:10] Reading quantification information: 3 files
+[0:10] Averaged recommended settings for this experiment: Mass accuracy = 10ppm, MS1 accuracy = 4ppm, Scan window = 7
+[0:10] Quantifying peptides
+[0:14] Assembling protein groups
+[0:18] Quantifying proteins
+[0:18] Calculating q-values for protein and gene groups
+[0:18] Calculating global q-values for protein and gene groups
+[0:18] Writing report
+[0:40] Report saved to report-first-pass.tsv.
+[0:40] Stats report saved to report-first-pass.stats.tsv
+[0:40] Generating spectral library:
+[0:40] 107576 precursors passing the FDR threshold are to be extracted
+[0:40] Loading run H:\watch_folder\MRC-Astral\1000ngHeLa_180SPD_ES906_20240214_01.raw
+[3:23] 3813183 library precursors are potentially detectable
+[3:25] 25095 spectra added to the library
+[3:25] Loading run H:\watch_folder\MRC-Astral\1000ngHeLa_180SPD_ES906_20240214_02.raw
+[3:48] 3813183 library precursors are potentially detectable
+[3:53] 33367 spectra added to the library
+[3:53] Loading run H:\watch_folder\MRC-Astral\1000ngHeLa_180SPD_ES906_20240214_03.raw
+[7:37] 3813183 library precursors are potentially detectable
+[7:39] 28134 spectra added to the library
+[7:40] Saving spectral library to lib.tsv
+[7:49] 107576 precursors saved
+[7:49] Loading the generated library and saving it in the .speclib format
+[7:49] Loading spectral library lib.tsv
+[7:53] Spectral library loaded: 21127 protein isoforms, 15479 protein groups and 107576 precursors in 91086 elution groups.
+[7:53] Protein names missing for some isoforms
+[7:53] Gene names missing for some isoforms
+[7:53] Library contains 0 proteins, and 0 genes
+[7:53] Saving the library to lib.tsv.speclib
+
+[7:57] Second pass: using the newly created spectral library to reanalyse the data
+[7:57] File #1/3
+[7:57] Loading run H:\watch_folder\MRC-Astral\1000ngHeLa_180SPD_ES906_20240214_01.raw
+[8:13] 107576 library precursors are potentially detectable
+[8:13] Processing...
+[8:13] RT window set to 0.129103
+[8:13] Peak width: 3.632
+[8:13] Scan window radius set to 7
+[8:13] Recommended MS1 mass accuracy setting: 4.12758 ppm
+[8:17] Removing low confidence identifications
+[8:17] Removing interfering precursors
+[8:20] Training neural networks: 104371 targets, 98191 decoys
+[8:28] Number of IDs at 0.01 FDR: 101352
+[8:29] Calculating protein q-values
+[8:29] Number of genes identified at 1% FDR: 8206 (precursor-level), 7539 (protein-level) (inference performed using proteotypic peptides only)
+[8:29] Quantification
+
+[8:30] File #2/3
+[8:30] Loading run H:\watch_folder\MRC-Astral\1000ngHeLa_180SPD_ES906_20240214_02.raw
+[8:47] 107576 library precursors are potentially detectable
+[8:47] Processing...
+[8:48] RT window set to 0.128641
+[8:48] Peak width: 3.648
+[8:48] Scan window radius set to 8
+[8:48] Recommended MS1 mass accuracy setting: 4.2108 ppm
+[8:52] Removing low confidence identifications
+[8:52] Removing interfering precursors
+[8:55] Training neural networks: 103945 targets, 95805 decoys
+[9:03] Number of IDs at 0.01 FDR: 101048
+[9:04] Calculating protein q-values
+[9:04] Number of genes identified at 1% FDR: 8216 (precursor-level), 7520 (protein-level) (inference performed using proteotypic peptides only)
+[9:04] Quantification
+
+[9:05] File #3/3
+[9:05] Loading run H:\watch_folder\MRC-Astral\1000ngHeLa_180SPD_ES906_20240214_03.raw
+[9:23] 107576 library precursors are potentially detectable
+[9:23] Processing...
+[9:23] RT window set to 0.129214
+[9:23] Peak width: 3.54
+[9:23] Scan window radius set to 7
+[9:23] Recommended MS1 mass accuracy setting: 4.23684 ppm
+[9:27] Removing low confidence identifications
+[9:27] Removing interfering precursors
+[9:30] Training neural networks: 104351 targets, 98048 decoys
+[9:38] Number of IDs at 0.01 FDR: 101265
+[9:39] Calculating protein q-values
+[9:39] Number of genes identified at 1% FDR: 8200 (precursor-level), 7509 (protein-level) (inference performed using proteotypic peptides only)
+[9:39] Quantification
+
+[9:40] Cross-run analysis
+[9:40] Reading quantification information: 3 files
+[9:40] Averaged recommended settings for this experiment: Mass accuracy = 20ppm, MS1 accuracy = 20ppm, Scan window = 7
+[9:40] Quantifying peptides
+[9:44] Quantifying proteins
+[9:44] Calculating q-values for protein and gene groups
+[9:44] Calculating global q-values for protein and gene groups
+[9:44] Writing report
+[9:58] Report saved to report.tsv.
+[9:58] Stats report saved to report.stats.tsv
+
+Finished
+

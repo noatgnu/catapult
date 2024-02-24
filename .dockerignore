@@ -4,3 +4,5 @@ diann
 data
 *.exe
 *.sqlite3
+*.tsv
+*.speclib

@@ -29,7 +29,7 @@ class Command(BaseCommand):
         commands = [diann_path]
         for f in files:
             commands.append("--f")
-            commands.append(f.file_path)
+            commands.append(f.get_path())
         cpu_count = os.cpu_count()
         commands.extend(
             [

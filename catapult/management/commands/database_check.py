@@ -3,10 +3,20 @@ import time
 import os
 
 from django.core.management.base import BaseCommand, CommandError
+from django.db.models import Q
 from django.utils.timezone import make_aware
-
+from django.db import transaction
 from catapult.models import Experiment, File, Analysis
 from catapult.tasks import run_analysis, run_quant
+
+
+def get_folder_size(folder_path):
+    total_size = 0
+    for dirpath, dirnames, filenames in os.walk(folder_path):
+        for f in filenames:
+            fp = os.path.join(dirpath, f)
+            total_size += os.path.getsize(fp)
+    return total_size
 
 
 class Command(BaseCommand):
@@ -25,9 +35,22 @@ class Command(BaseCommand):
             while True:
                 files = File.objects.filter(size__isnull=False, ready_for_processing=False, updated_at__lt=make_aware(datetime.datetime.now() - datetime.timedelta(seconds=options['threshold'])))
                 if files:
-                    files.update(ready_for_processing=True)
+                    file_d = files.filter(experiment__vendor=".d")
+                    ready_files = files.filter(~Q(experiment__vendor=".d"))
+                    ready_files.update(ready_for_processing=True)
+                    ready_files = list(ready_files)
+                    with transaction.atomic():
+                        for f in file_d:
+                            folder_size = get_folder_size(f.get_path())
+                            if folder_size == f.size:
+                                f.ready_for_processing = True
+                                ready_files.append(f)
+                            else:
+                                f.size = folder_size
+                            f.save()
+
                     experiments = Experiment.objects.filter(
-                                       files__in=files,
+                                       files__in=ready_files,
                                        analysis__isnull=False,
                                        sample_count__isnull=False
                     ).distinct()

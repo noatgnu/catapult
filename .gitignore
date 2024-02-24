@@ -8,6 +8,7 @@ __pycache__
 wine
 diann
 MRC-Astral
-*.exe
 staticfiles
 media
+*.tsv
+*.speclib
