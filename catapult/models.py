@@ -2,6 +2,8 @@ import os
 import subprocess
 from datetime import datetime
 
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 from django.contrib.auth.models import User
 from django.db import models
 from rest_framework_api_key.crypto import KeyGenerator
@@ -178,7 +180,7 @@ class Analysis(models.Model):
     def delete(self, using=None, keep_parents=False):
         super().delete(using=using, keep_parents=keep_parents)
 
-    def start_analysis(self):
+    def start_analysis(self, task_id="", hostname=""):
         commands = []
         if self.analysis_type.startswith("diann"):
             commands.append(DIANN_PATH)
@@ -207,14 +209,34 @@ class Analysis(models.Model):
         self.processing = True
         self.start_time = datetime.now()
         self.save()
-        subprocess.run(commands, shell=True, check=True)
+        # run the commands and stream the output to websocket channel
+        process = subprocess.Popen(commands, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+        channel_layer = get_channel_layer()
+        while process.poll() is None:
+            output = process.stdout.readline()
+            if output:
+                output_line = output.decode("utf-8")
+                async_to_sync(channel_layer.group_send)(
+                    "analysis_log", {
+                        "type": "log_message",
+                        "message": {
+                            "task_id": task_id,
+                            "log": output_line,
+                            "hostname": hostname,
+                            "timestamp": f"{datetime.now().timestamp()}",
+                        },
+                    }
+                )
+
+
+        #subprocess.run(commands, shell=True, check=True)
         self.stop_time = datetime.now()
         self.processing = False
         self.completed = True
         self.save()
         return self
 
-    def create_quant_file(self):
+    def create_quant_file(self, task_id="", hostname=""):
         commands = []
         files = []
         if self.analysis_type.startswith("diann"):
@@ -241,7 +263,23 @@ class Analysis(models.Model):
         if len(commands) > 0:
             commands.extend(self.commands.split(" "))
             os.makedirs(os.path.join(self.output_folder, "temp"), exist_ok=True)
-            subprocess.run(commands, shell=True, check=True)
+            process = subprocess.Popen(commands, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+            channel_layer = get_channel_layer()
+            while process.poll() is None:
+                output = process.stdout.readline()
+                if output:
+                    output_line = output.decode("utf-8")
+                    async_to_sync(channel_layer.group_send)(
+                        "analysis_log", {
+                            "type": "log_message",
+                            "message": {
+                                "task_id": task_id,
+                                "log": output_line,
+                                "hostname": hostname,
+                                "timestamp": f"{datetime.now().timestamp()}"
+                            },
+                        }
+                    )
             self.generated_quant.add(*files)
             self.save()
         else:

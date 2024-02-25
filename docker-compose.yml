@@ -1,5 +1,5 @@
 # a docker-compose file with a postgres 14 service
-# celery -A catapult_backend worker --loglevel=INFO -P solo
+# celery -A catapult_backend worker -Q default --hostname=work1@diann  --loglevel=INFO -P solo
 
 version: '3.8'
 services:

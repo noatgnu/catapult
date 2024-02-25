@@ -9,5 +9,6 @@ from catapult_backend.settings import REDIS_URL
 
 app = Celery('catapult_backend', broker=REDIS_URL)
 app.config_from_object('django.conf:settings', namespace='CELERY')
+app.conf.task_default_queue = 'default'
 app.autodiscover_tasks()
 

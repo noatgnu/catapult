@@ -17,6 +17,8 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 from rest_framework import routers
+
+from catapult.views import FileBrowserView
 from catapult.viewsets import UserAPIKeyViewSets, ExperimentViewSet, AnalysisViewSet, FileViewSet, UploadedFileViewSet, \
     FolderWatchingLocationViewSet, CeleryTaskViewSet
 
@@ -34,6 +36,7 @@ from rest_framework.authtoken import views
 
 urlpatterns = [
     path('', include(router.urls)),
+    path('api/file-browser/', FileBrowserView.as_view(), name='file-browser'),
     path('admin/', admin.site.urls),
     path('api-token-auth/', views.obtain_auth_token)
 
