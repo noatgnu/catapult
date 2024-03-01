@@ -16,6 +16,15 @@ services:
       - ./staticfiles:/static/
     depends_on:
       - catapult
+      - catapultfrontend
+    networks:
+      - catapult-net
+  catapultfrontend:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/Dockerfile-frontend
+    container_name: catapultfrontend
+    restart: always
     networks:
       - catapult-net
   catapult:

@@ -12,3 +12,6 @@ staticfiles
 media
 *.tsv
 *.speclib
+*.json
+*.log
+*.txt

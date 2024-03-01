@@ -13,7 +13,8 @@ from django.dispatch import receiver
 from rest_framework.authtoken.models import Token
 
 from django.conf import settings
-from catapult_backend.settings import DIANN_PATH, CPU_COUNT, DEFAULT_DIANN_PARAMS
+from catapult_backend.settings import DIANN_PATH, CPU_COUNT, DEFAULT_DIANN_PARAMS, DEFAULT_MSCONVERT_PARAMS, \
+    MSCONVERT_PATH
 
 
 # Create your models here.
@@ -130,6 +131,64 @@ class File(models.Model):
         return os.path.join(self.folder_watching_location.folder_path, self.file_path)
 
 
+class MSConvert(models.Model):
+    """
+    A data model for storing the msconvert data with the following column:
+    - created_at: the date and time the msconvert was created
+    - updated_at: the date and time the msconvert was last updated
+    - experiment: the experiment the msconvert belongs to
+    - input_file: the input file for the msconvert
+    - output_folder: the output folder for the msconvert
+    - processing: a boolean status of the msconvert indicating if it is being processed
+    - completed: a boolean value indicating if the msconvert has been completed
+    - log: the log of the msconvert
+    - commands: the commands used for the msconvert
+    """
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    experiment = models.ForeignKey(Experiment, on_delete=models.SET_NULL, null=True, blank=True, related_name="msconvert")
+    file = models.ForeignKey(File, on_delete=models.CASCADE, related_name="msconvert")
+    output_folder = models.TextField(blank=False, null=False)
+    processing = models.BooleanField(default=False)
+    completed = models.BooleanField(default=False)
+    log = models.TextField(blank=True, null=True)
+    commands = models.TextField(blank=True, null=True)
+
+    def start_msconvert(self, task_id="", hostname=""):
+        commands = []
+        converted_folder = os.path.join(self.output_folder, "converted")
+        os.makedirs(converted_folder, exist_ok=True)
+        commands.append(MSCONVERT_PATH)
+        commands.append(self.file.get_path())
+        commands.append("-o")
+        commands.append(converted_folder)
+        commands.extend(self.commands.split(" "))
+        process = subprocess.Popen(commands, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+        channel_layer = get_channel_layer()
+        self.processing = True
+        self.completed = False
+        self.save()
+        while process.poll() is None:
+            output = process.stdout.readline()
+            if output:
+                output_line = output.decode("utf-8")
+                async_to_sync(channel_layer.group_send)(
+                    "analysis_log", {
+                        "type": "log_message",
+                        "message": {
+                            "task_id": task_id,
+                            "log": output_line,
+                            "hostname": hostname,
+                            "timestamp": f"{datetime.now().timestamp()}"
+                        },
+                    }
+                )
+        self.processing = False
+        self.completed = True
+        self.save()
+        return self
+
+
 class Analysis(models.Model):
     """A data model for storing analysis with the following column:
     - analysis_name: the name of the analysis
@@ -207,6 +266,7 @@ class Analysis(models.Model):
         commands.extend(self.commands.split(" "))
         os.makedirs(os.path.join(self.output_folder, "temp"), exist_ok=True)
         self.processing = True
+        self.completed = False
         self.start_time = datetime.now()
         self.save()
         # run the commands and stream the output to websocket channel
@@ -284,6 +344,8 @@ class Analysis(models.Model):
             self.save()
         else:
             raise ValueError("Analysis type not supported for quant file generation")
+
+
 
     def save(
             self, force_insert=False, force_update=False, using=None, update_fields=None
@@ -376,6 +438,26 @@ class CeleryTask(models.Model):
 
     def delete(self, using=None, keep_parents=False):
         super().delete(using=using, keep_parents=keep_parents)
+
+class CeleryWorker(models.Model):
+    """
+    A data model for registering the celery worker with the following column:
+    - created_at: the date and time the worker was registered
+    - updated_at: the date and time the worker was last updated
+    - worker_name: the name of the worker
+    - worker_params: the parameters of the worker
+    - worker_status: the status of the worker
+    - worker_hostname: the hostname of the worker
+    - folder_path_translations: a dictionary of the folder path used and its translated paths from the worker
+    """
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    worker_name = models.CharField(max_length=200, blank=False, null=False, unique=True, db_index=True)
+    worker_params = models.JSONField(blank=True, null=True)
+    worker_status = models.CharField(max_length=20, blank=False, null=False)
+    worker_hostname = models.CharField(max_length=200, blank=False, null=False, unique=True, db_index=True)
+    folder_path_translations = models.JSONField(blank=True, null=True)
+
 
 @receiver(post_save, sender=settings.AUTH_USER_MODEL)
 def create_auth_token(sender, instance=None, created=False, **kwargs):

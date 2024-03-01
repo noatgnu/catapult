@@ -1,4 +1,4 @@
 FROM nginx:1.21.3
 
-RUN rm -rf /etc/nginx/user.conf.d/*
+RUN rm -rf /etc/nginx/conf.d/*
 COPY ./nginx-conf/catapult.conf /etc/nginx/conf.d/catapult.conf

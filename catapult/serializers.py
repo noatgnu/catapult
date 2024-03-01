@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
-from catapult.models import Experiment, File, Analysis, FolderWatchingLocation, UserAPIKey, UploadedFile, CeleryTask
+from catapult.models import Experiment, File, Analysis, FolderWatchingLocation, UserAPIKey, UploadedFile, CeleryTask, \
+    CeleryWorker
 
 
 class ExperimentSerializer(serializers.ModelSerializer):
@@ -43,4 +44,10 @@ class UploadedFileSerializer(serializers.ModelSerializer):
 class CeleryTaskSerializer(serializers.ModelSerializer):
     class Meta:
         model = CeleryTask
+        fields = '__all__'
+
+
+class CeleryWorkerSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CeleryWorker
         fields = '__all__'

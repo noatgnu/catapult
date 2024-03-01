@@ -132,7 +132,7 @@ class AnalysisViewSet(viewsets.ModelViewSet, FiltersMixin):
     @action(detail=True, methods=["get"])
     def get_associated_tasks(self, request, pk=None):
         analysis = self.get_object()
-        tasks = analysis.tasks.all()
+        tasks = analysis.tasks.all().order_by("-created_at")
         data = CeleryTaskSerializer(tasks, many=True, context={"request": request}).data
         return Response(data=data, status=status.HTTP_200_OK)
 

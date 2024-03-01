@@ -39,5 +39,4 @@ urlpatterns = [
     path('api/file-browser/', FileBrowserView.as_view(), name='file-browser'),
     path('admin/', admin.site.urls),
     path('api-token-auth/', views.obtain_auth_token)
-
 ]
