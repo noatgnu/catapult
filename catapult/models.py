@@ -449,6 +449,7 @@ class CeleryWorker(models.Model):
     - worker_status: the status of the worker
     - worker_hostname: the hostname of the worker
     - folder_path_translations: a dictionary of the folder path used and its translated paths from the worker
+    - worker_os: the operating system of the worker
     """
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -457,6 +458,7 @@ class CeleryWorker(models.Model):
     worker_status = models.CharField(max_length=20, blank=False, null=False)
     worker_hostname = models.CharField(max_length=200, blank=False, null=False, unique=True, db_index=True)
     folder_path_translations = models.JSONField(blank=True, null=True)
+    worker_os = models.CharField(max_length=20, blank=True, null=True)
 
 
 @receiver(post_save, sender=settings.AUTH_USER_MODEL)

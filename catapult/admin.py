@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from catapult.models import Experiment, File, FolderWatchingLocation, Analysis
+from catapult.models import Experiment, File, FolderWatchingLocation, Analysis, CeleryTask, CeleryWorker, MSConvert
 
 
 # Register your models here.
@@ -19,4 +19,16 @@ class FolderWatchingLocationAdmin(admin.ModelAdmin):
 
 @admin.register(Analysis)
 class AnalysisAdmin(admin.ModelAdmin):
+    pass
+
+@admin.register(CeleryTask)
+class CeleryTaskAdmin(admin.ModelAdmin):
+    pass
+
+@admin.register(CeleryWorker)
+class CeleryWorkerAdmin(admin.ModelAdmin):
+    pass
+
+@admin.register(MSConvert)
+class MSConvertAdmin(admin.ModelAdmin):
     pass
