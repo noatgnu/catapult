@@ -5,9 +5,12 @@ from rest_framework.parsers import JSONParser, FormParser, MultiPartParser
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from filters.mixins import FiltersMixin
-from catapult.models import File, Experiment, Analysis, FolderWatchingLocation, UserAPIKey, UploadedFile, CeleryTask
+from catapult.models import File, Experiment, Analysis, FolderWatchingLocation, UserAPIKey, UploadedFile, CeleryTask, \
+    CeleryWorker
 from catapult.serializers import FileSerializer, ExperimentSerializer, AnalysisSerializer, \
-    FolderWatchLocationSerializer, UserAPIKeySerializer, UploadedFileSerializer, CeleryTaskSerializer
+    FolderWatchLocationSerializer, UserAPIKeySerializer, UploadedFileSerializer, CeleryTaskSerializer, \
+    CeleryWorkerSerializer
+from catapult.tasks import run_analysis
 
 
 class FileViewSet(viewsets.ModelViewSet, FiltersMixin):
@@ -136,6 +139,23 @@ class AnalysisViewSet(viewsets.ModelViewSet, FiltersMixin):
         data = CeleryTaskSerializer(tasks, many=True, context={"request": request}).data
         return Response(data=data, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=["get"])
+    def get_readiness(self, request, pk=None):
+        analysis = self.get_object()
+        return Response(data={"ready": analysis.ready()}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["post"])
+    def queue_analysis(self, request, pk=None):
+        analysis = self.get_object()
+        print(analysis)
+        if not analysis.ready():
+            return Response(status=status.HTTP_400_BAD_REQUEST)
+        run_analysis.delay(analysis.id)
+
+        return Response(status=status.HTTP_200_OK)
+
+
+
 
 class FolderWatchingLocationViewSet(viewsets.ModelViewSet, FiltersMixin):
     queryset = FolderWatchingLocation.objects.all()
@@ -208,11 +228,20 @@ class UploadedFileViewSet(viewsets.ModelViewSet, FiltersMixin):
         return data_object
 
 
-class CeleryTaskViewSet(viewsets.ModelViewSet):
+class CeleryTaskViewSet(viewsets.ReadOnlyModelViewSet, FiltersMixin):
     queryset = CeleryTask.objects.all()
     serializer_class = CeleryTaskSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
     search_fields = ['task_id', 'status']
     ordering_fields = ['created_at', 'updated_at', 'status', 'task_id', 'id']
+
+
+class CeleryWorkerViewSet(viewsets.ReadOnlyModelViewSet, FiltersMixin):
+    queryset = CeleryWorker.objects.all()
+    serializer_class = CeleryWorkerSerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
+    search_fields = ['worker_hostname', 'worker_status']
+    ordering_fields = ['worker_hostname', 'worker_status']
 

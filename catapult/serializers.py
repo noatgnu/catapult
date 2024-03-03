@@ -17,9 +17,14 @@ class FileSerializer(serializers.ModelSerializer):
 
 
 class AnalysisSerializer(serializers.ModelSerializer):
+    ready = serializers.SerializerMethodField()
+
+    def get_ready(self, obj):
+        return obj.ready()
+
     class Meta:
         model = Analysis
-        fields = '__all__'
+        fields = [f.name for f in Analysis._meta.fields if f.name not in ["id"]] + ['id', 'ready']
 
 
 class FolderWatchLocationSerializer(serializers.ModelSerializer):
@@ -48,6 +53,11 @@ class CeleryTaskSerializer(serializers.ModelSerializer):
 
 
 class CeleryWorkerSerializer(serializers.ModelSerializer):
+    current_tasks = serializers.SerializerMethodField()
+
+    def get_current_tasks(self, obj):
+        return CeleryTaskSerializer(obj.tasks.all(), many=True).data
+
     class Meta:
         model = CeleryWorker
-        fields = '__all__'
+        fields = ["id", "worker_hostname", "worker_os", "worker_status", "current_tasks"]

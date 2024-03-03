@@ -7,13 +7,13 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'catapult_backend.settings')
 
 from catapult_backend.settings import REDIS_URL
 
-from celery.signals import worker_shutting_down, celeryd_after_setup
+from celery.signals import worker_shutting_down, worker_ready
 
 
-@celeryd_after_setup.connect
-def worker_started_handler(sender, instance, **kwargs):
+@worker_ready.connect
+def worker_started_handler(**kwargs):
     from catapult.models import CeleryWorker
-    worker, created = CeleryWorker.objects.get(worker_hostname=os.environ.get('WORKER_HOSTNAME'))
+    worker = CeleryWorker.objects.get(worker_hostname=os.environ.get('WORKER_HOSTNAME'))
     worker.worker_os = os.name
     worker.worker_status = 'ONLINE'
     worker.save()

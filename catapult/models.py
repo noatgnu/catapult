@@ -345,6 +345,10 @@ class Analysis(models.Model):
         else:
             raise ValueError("Analysis type not supported for quant file generation")
 
+    def ready(self):
+        if self.experiment.ready_for_processing():
+            return True
+        return False
 
 
     def save(
@@ -425,6 +429,7 @@ class CeleryTask(models.Model):
     status = models.CharField(max_length=20, blank=False, null=False)
     analysis = models.ForeignKey(Analysis, on_delete=models.CASCADE, blank=True, null=True, related_name="tasks")
     analysis_params = models.JSONField(blank=True, null=True)
+    worker = models.ForeignKey("CeleryWorker", on_delete=models.SET_NULL, blank=True, null=True, related_name="tasks")
 
     class Meta:
         ordering = ["id"]
