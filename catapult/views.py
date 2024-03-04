@@ -1,8 +1,9 @@
+from django.http import HttpResponse
 from django.shortcuts import render
 from rest_framework.permissions import IsAuthenticatedOrReadOnly
 from rest_framework.views import APIView
 import os
-
+from rest_framework.response import Response
 # Create your views here.
 
 class FileBrowserView(APIView):
@@ -19,8 +20,4 @@ class FileBrowserView(APIView):
             else:
                 files.append(i.name)
 
-        return {
-            "current": file_path,
-            "folders": folder,
-            "files": files
-        }
+        return Response(data={"folders": folder, "files": files, "current": file_path})

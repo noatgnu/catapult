@@ -444,6 +444,12 @@ class CeleryTask(models.Model):
     def delete(self, using=None, keep_parents=False):
         super().delete(using=using, keep_parents=keep_parents)
 
+    def get_experiment(self):
+        return self.analysis.experiment
+
+    def get_analysis(self):
+        return self.analysis
+
 class CeleryWorker(models.Model):
     """
     A data model for registering the celery worker with the following column:

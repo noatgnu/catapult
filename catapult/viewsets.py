@@ -236,6 +236,20 @@ class CeleryTaskViewSet(viewsets.ReadOnlyModelViewSet, FiltersMixin):
     search_fields = ['task_id', 'status']
     ordering_fields = ['created_at', 'updated_at', 'status', 'task_id', 'id']
 
+    @action(detail=True, methods=["get"])
+    def get_experiment(self, request, pk=None):
+        task = self.get_object()
+        experiment = task.get_experiment()
+        data = ExperimentSerializer(experiment, many=False, context={"request": request}).data
+        return Response(data=data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["get"])
+    def get_analysis(self, request, pk=None):
+        task = self.get_object()
+        analysis = task.get_analysis()
+        data = AnalysisSerializer(analysis, many=False, context={"request": request}).data
+        return Response(data=data, status=status.HTTP_200_OK)
+
 
 class CeleryWorkerViewSet(viewsets.ReadOnlyModelViewSet, FiltersMixin):
     queryset = CeleryWorker.objects.all()
