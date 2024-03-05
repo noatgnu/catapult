@@ -470,6 +470,7 @@ class CeleryWorker(models.Model):
     worker_hostname = models.CharField(max_length=200, blank=False, null=False, unique=True, db_index=True)
     folder_path_translations = models.JSONField(blank=True, null=True)
     worker_os = models.CharField(max_length=20, blank=True, null=True)
+    worker_info = models.JSONField(blank=True, null=True)
 
 
 @receiver(post_save, sender=settings.AUTH_USER_MODEL)

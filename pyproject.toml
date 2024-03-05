@@ -28,6 +28,7 @@ djangorestframework = "^3.14.0"
 markdown = "^3.5.2"
 djangorestframework-api-key = "==2.*"
 drf-url-filters = "^0.5.1"
+psutil = "^5.9.8"
 
 
 [build-system]

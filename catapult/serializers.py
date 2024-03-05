@@ -60,4 +60,4 @@ class CeleryWorkerSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CeleryWorker
-        fields = ["id", "worker_hostname", "worker_os", "worker_status", "current_tasks"]
+        fields = ["id", "worker_hostname", "worker_os", "worker_status", "current_tasks", "worker_info"]
