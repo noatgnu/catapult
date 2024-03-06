@@ -23,6 +23,7 @@ class FileViewSet(viewsets.ModelViewSet, FiltersMixin):
     search_fields = ['file_path']
 
 
+
 class ExperimentViewSet(viewsets.ModelViewSet, FiltersMixin):
     queryset = Experiment.objects.all()
     serializer_class = ExperimentSerializer
@@ -74,6 +75,13 @@ class ExperimentViewSet(viewsets.ModelViewSet, FiltersMixin):
         experiment = self.get_object()
         analyses = experiment.analysis.all()
         data = AnalysisSerializer(analyses, many=True, context={"request": request}).data
+        return Response(data=data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["get"])
+    def get_associated_files(self, request, pk=None):
+        experiment = self.get_object()
+        files = experiment.files.all()
+        data = FileSerializer(files, many=True, context={"request": request}).data
         return Response(data=data, status=status.HTTP_200_OK)
 
 class AnalysisViewSet(viewsets.ModelViewSet, FiltersMixin):
