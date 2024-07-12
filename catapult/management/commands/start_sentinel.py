@@ -1,13 +1,17 @@
 import datetime
+import logging
 import time
 import os
 
+import yaml
 from django.core.management.base import BaseCommand, CommandError
 from django.db.models import Q
 from watchdog.observers.polling import PollingObserverVFS
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
-from catapult.models import File, FolderWatchingLocation, Experiment
+from catapult.models import File, FolderWatchingLocation, Experiment, CatapultRunConfig
+
+logger = logging.getLogger(f"catapult.sentinel")
 
 def get_folder_size(folder_path):
     total_size = 0
@@ -42,34 +46,60 @@ class Watcher(FileSystemEventHandler):
         if extension in self.file_extensions:
             file_size, modified_time, created_time = self.process_file(event.src_path)
             # get parent folder
-            file_location = event.src_path
-            if event.src_path.endswith(".d"):
-                root, file = os.path.split(event.src_path)
-                parent_folder = os.path.dirname(root)
-                file_location = root
-                file_size = get_folder_size(file_location)
-            else:
-                parent_folder = os.path.dirname(event.src_path)
+            try:
+                file = File.objects.get(file_path=event.src_path.replace(self.folder_path, ""))
+                file.size = file_size
+                file.save()
+            except File.DoesNotExist:
+                file_location = event.src_path
+                if event.src_path.endswith(".d"):
+                    root, file = os.path.split(event.src_path)
+                    parent_folder = os.path.dirname(root)
+                    file_location = root
+                    file_size = get_folder_size(file_location)
+                else:
+                    parent_folder = os.path.dirname(event.src_path)
+                exp = Experiment.objects.get_or_create(experiment_name=parent_folder)
+                file = File.objects.create(
+                    file_path=file_location.replace(self.folder_path, ""),
+                    folder_watching_location=self.folder_watching_location,
+                    size=file_size,
+                    experiment=exp[0],
+                )
 
-            exp = Experiment.objects.get_or_create(experiment_name=parent_folder)
-
-            File.objects.create(
-                file_path=file_location.replace(self.folder_path, ""),
-                experiment=exp[0],
-                folder_watching_location=self.folder_watching_location,
-                size=file_size,
-            )
             print(f"{event.src_path} has been created at {modified_time}")
+        elif event.src_path.endswith(".cat.yml") or event.src_path.endswith(".cat.yaml"):
+            self.load_config_yaml(event)
 
+    def load_config_yaml(self, event):
+        if not CatapultRunConfig.objects.filter(config_file_path=event.src_path).exists():
+            logger.info(f"attempting to load config file {event.src_path}")
+            try:
+                with open(event.src_path, "r") as f:
+                    config_data = yaml.safe_load(f)
+            except yaml.YAMLError as exc:
+                logger.error(f"Error loading yaml file {event.src_path}")
+                return None
+            if "cat_ready" in config_data:
+                if config_data["cat_ready"]:
+                    logger.info(f"config file {event.src_path} is ready")
+                    parent_folder = os.path.dirname(event.src_path)
+                    exp = Experiment.objects.get_or_create(experiment_name=parent_folder)
+                    config = CatapultRunConfig.objects.create(
+                        experiment=exp[0],
+                        config_file_path=event.src_path,
+                        folder_watching_location=self.folder_watching_location,
+                    )
+                    logger.info(f"config file {event.src_path} loaded successfully")
 
     def on_deleted(self, event):
         if self.folder_watching_location.ignore_term in event.src_path:
             return
         File.objects.filter(file_path=event.src_path).delete()
-        print(f"{event.src_path} has been deleted at {datetime.datetime.now()}")
+        logger.info(f"{event.src_path} has been deleted at {datetime.datetime.now()}")
 
     def on_modified(self, event):
-        print(f"{event.src_path} has been modified")
+        logger.info(f"{event.src_path} has been modified at {datetime.datetime.now()}")
         if self.folder_watching_location.ignore_term in event.src_path:
             return
         if event.is_directory:
@@ -77,10 +107,28 @@ class Watcher(FileSystemEventHandler):
         extension = os.path.splitext(event.src_path)[1]
         if extension in self.file_extensions:
             file_size, modified_time, created_time = self.process_file(event.src_path)
-            file = File.objects.get(file_path=event.src_path)
-            file.size = file_size
-            file.save()
-
+            try:
+                file = File.objects.get(file_path=event.src_path.replace(self.folder_path, ""))
+                file.size = file_size
+                file.save()
+            except File.DoesNotExist:
+                file_location = event.src_path
+                if event.src_path.endswith(".d"):
+                    root, file = os.path.split(event.src_path)
+                    parent_folder = os.path.dirname(root)
+                    file_location = root
+                    file_size = get_folder_size(file_location)
+                else:
+                    parent_folder = os.path.dirname(event.src_path)
+                exp = Experiment.objects.get_or_create(experiment_name=parent_folder)
+                file = File.objects.create(
+                    file_path=file_location.replace(self.folder_path, ""),
+                    folder_watching_location=self.folder_watching_location,
+                    experiment=exp[0],
+                    size=file_size,
+                )
+        elif event.src_path.endswith(".cat.yml") or event.src_path.endswith(".cat.yaml"):
+            self.load_config_yaml(event)
 
     def on_moved(self, event):
         if self.folder_watching_location.ignore_term in event.src_path:
@@ -91,9 +139,7 @@ class Watcher(FileSystemEventHandler):
         extension = os.path.splitext(event.src_path)[1]
         if extension in self.file_extensions:
             File.objects.filter(file_path=event.src_path).update(file_path=event.dest_path)
-        print(f"{event.src_path} to {event.dest_path} at {datetime.datetime.now()}")
-
-
+        logger.info(f"{event.src_path} has been moved to {event.dest_path} at {datetime.datetime.now()}")
 
 
 class Command(BaseCommand):
@@ -103,6 +149,16 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         observers = []
+        logging_path = "sentinel.log"
+        if not logger.hasHandlers():
+            # Use FileHandler instead of StreamHandler
+            handler = logging.FileHandler(logging_path)
+            # Set the format for the handler
+            formatter = logging.Formatter('[%(asctime)s: %(levelname)s]  %(message)s')
+            handler.setFormatter(formatter)
+
+            logger.addHandler(handler)
+        logger.info(f"Logging to {logging_path}")
         for f in FolderWatchingLocation.objects.all():
             w = Watcher(f)
             if w.network_folder:
@@ -117,6 +173,7 @@ class Command(BaseCommand):
             while True:
                 time.sleep(1)
         except KeyboardInterrupt:
+            logger.info("Stopping observers")
             for observer in observers:
                 observer.unschedule_all()
                 observer.stop()

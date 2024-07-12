@@ -39,8 +39,10 @@ INSTALLED_APPS = [
     'corsheaders',
     'channels',
     'dbbackup',
+    'django_tasks',
     #'django_rq',
     #'scheduler',
+    'django_tasks.backends.database',
     'catapult.apps.CatapultConfig',
     'django_celery_results',
     'rest_framework',
@@ -282,3 +284,10 @@ CPU_COUNT = os.environ.get("CPU_COUNT", str(os.cpu_count()-3))
 MSCONVERT_PATH = os.environ.get("MSCONVERT_PATH", r"C:\Program Files\ProteoWizard\ProteoWizard 3.0.20291\msconvert.exe")
 DEFAULT_MSCONVERT_PARAMS = "-v"
 DEFAULT_DIANN_PARAMS = "--min-fr-mz 200 --max-fr-mz 1800 --cut K*,R* --missed-cleavages 2 --min-pep-len 7 --max-pep-len 30 --min-pr-mz 300 --max-pr-mz 1800 --min-pr-charge 1 --max-pr-charge 4 --unimod4 --var-mods 1 --var-mod UniMod:35,15.994915,M --mass-acc 20 --mass-acc-ms1 20 --individual-mass-acc --individual-windows --reanalyse --smart-profiling --peak-center --no-ifs-removal"
+
+# Django Tasls
+TASKS = {
+    "default": {
+        "BACKEND": "django_tasks.backends.database.DatabaseBackend"
+    }
+}
