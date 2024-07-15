@@ -471,16 +471,28 @@ def run_diann_worker(commands: list[str], task_id: str = "", worker_hostname: st
                 ResultSummary.objects.create(
                     analysis=analysis,
                     file=file,
-                    protein_identified=r["Protein.Identified"],
-                    precursor_identified=r["Precursor.Identified"]
+                    protein_identified=r["Proteins.Identified"],
+                    precursor_identified=r["Precursors.Identified"],
+                    log_file=os.path.join(
+                        str(parent_folder.replace(config.folder_watching_location.folder_path, "")),
+                        config.content["prefix"],
+                        "report.stats.tsv"
+                    )
                 )
             else:
                 result_summary = result_summary.first()
-                if r["Protein.Identified"] != result_summary.protein_identified or r[
-                    "Precursor.Identified"] != result_summary.precursor_identified:
-                    result_summary.protein_identified = r["Protein.Identified"]
-                    result_summary.precursor_identified = r["Precursor.Identified"]
+                if r["Proteins.Identified"] != result_summary.protein_identified or r[
+                    "Precursors.Identified"] != result_summary.precursor_identified:
+                    result_summary.protein_identified = r["Proteins.Identified"]
+                    result_summary.precursor_identified = r["Precursors.Identified"]
+                    result_summary.log_file = os.path.join(
+                        str(parent_folder.replace(config.folder_watching_location.folder_path, "")),
+                        config.content["prefix"],
+                        "report.stats.tsv"
+                    )
                     result_summary.save()
+    analysis.processing = False
+    analysis.save(update_fields=["processing"])
     return analysis_id
 
 def run_diann(commands: list[str], task_id: str = "", worker_hostname: str = "", analysis_id: int = None, config_id: int = None):
@@ -546,14 +558,26 @@ def run_diann(commands: list[str], task_id: str = "", worker_hostname: str = "",
                     analysis=analysis,
                     file=file,
                     protein_identified=r["Protein.Identified"],
-                    precursor_identified=r["Precursor.Identified"]
+                    precursor_identified=r["Precursor.Identified"],
+                    log_file=os.path.join(
+                        str(parent_folder.replace(config.folder_watching_location.folder_path, "")),
+                        config.content["prefix"],
+                        "report.stats.tsv"
+                    )
                 )
             else:
                 result_summary = result_summary.first()
                 if r["Protein.Identified"] != result_summary.protein_identified or r["Precursor.Identified"] != result_summary.precursor_identified:
                     result_summary.protein_identified = r["Protein.Identified"]
                     result_summary.precursor_identified = r["Precursor.Identified"]
+                    result_summary.log_file = os.path.join(
+                        str(parent_folder.replace(config.folder_watching_location.folder_path, "")),
+                        config.content["prefix"],
+                        "report.stats.tsv"
+                    )
                     result_summary.save()
+    analysis.processing = False
+    analysis.save(update_fields=["processing"])
     return analysis_id
 
 

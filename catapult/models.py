@@ -317,10 +317,7 @@ class Analysis(models.Model):
                         self.generating_quant.add(file)
                         file.save(update_fields=["processing"])
                     commands.append(f'--f')
-                    watch_folder = self.config.folder_watching_location.folder_path
-                    folder = parent_folder.replace(watch_folder, "")
-                    file_path = os.path.join(folder, file.file_path)
-                    commands.append(file_path)
+                    commands.append(file.get_path())
         if not dry_run:
             self.processing = True
             os.makedirs(os.path.join(parent_folder, config["prefix"]), exist_ok=True)
@@ -662,6 +659,7 @@ class ResultSummary(models.Model):
     file = models.ForeignKey(File, on_delete=models.SET_NULL, related_name="result_summary", blank=True, null=True)
     protein_identified = models.IntegerField(blank=True, null=True)
     precursor_identified = models.IntegerField(blank=True, null=True)
+    log_file = models.TextField(blank=True, null=True)
 
     class Meta:
         ordering = ["id"]
