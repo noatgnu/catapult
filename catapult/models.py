@@ -225,6 +225,7 @@ class Analysis(models.Model):
     generating_quant = models.ManyToManyField("File", related_name="quant_files", blank=True)
     generated_quant = models.ManyToManyField("File", related_name="generated_quant_files", blank=True)
     config = models.ForeignKey("CatapultRunConfig", on_delete=models.SET_NULL, blank=True, null=True, related_name="analysis")
+    total_files = models.IntegerField(blank=True, null=True)
 
     class Meta:
         ordering = ["id"]
@@ -298,11 +299,28 @@ class Analysis(models.Model):
         self.save()
         return self
 
-    def create_commands_from_config(self, task_id="", hostname="", dry_run=True):
+    def create_commands_from_config(self, task_id="", hostname="", dry_run=True, all_files=False):
         config = self.config.content
         commands = [settings.DIANN_PATH]
         parent_folder = os.path.dirname(self.config.config_file_path)
-        files = self.experiment.files.filter(ready_for_processing=True, processing=False)
+        if all_files:
+            files = self.experiment.files.filter(ready_for_processing=True)
+        else:
+            files = self.experiment.files.filter(ready_for_processing=True, processing=False)
+        if files.count() == 0:
+            return []
+        else:
+            if not config["f"]:
+                for file in files:
+                    file.processing = True
+                    if not dry_run:
+                        self.generating_quant.add(file)
+                        file.save(update_fields=["processing"])
+                    commands.append(f'--f')
+                    watch_folder = self.config.folder_watching_location.folder_path
+                    folder = parent_folder.replace(watch_folder, "")
+                    file_path = os.path.join(folder, file.file_path)
+                    commands.append(file_path)
         if not dry_run:
             self.processing = True
             os.makedirs(os.path.join(parent_folder, config["prefix"]), exist_ok=True)
@@ -409,6 +427,7 @@ class Analysis(models.Model):
                                     for f1 in file:
                                         f1.processing = True
                                         if not dry_run:
+                                            self.generating_quant.add(f1)
                                             f1.save(update_fields=["processing"])
 
                         else:
@@ -606,19 +625,56 @@ class CatapultRunConfig(models.Model):
                         self.fasta_required = True
 
         self.save(update_fields=["content", "fasta_required", "spectral_library_required"])
-        for f in self.content["f"]:
+        if "f" in self.content:
+            if isinstance(self.content["f"], list):
+                analysis.total_files = len(self.content["f"])
+                analysis.save()
+                for f in self.content["f"]:
+                    file_path = os.path.join(parent_folder, f)
+                    experiment_files = File.objects.filter(experiment=self.experiment, file_path=file_path)
+                    if not experiment_files.exists():
+                        file = File.objects.create(
+                            file_path=file_path,
+                            experiment=self.experiment,
+                            folder_watching_location=self.folder_watching_location,
+                            size=os.path.getsize(f),
+                            analysis=analysis
+                        )
 
-            file_path = os.path.join(parent_folder, f)
-            experiment_files = File.objects.filter(experiment=self.experiment, file_path=file_path)
-            if not experiment_files.exists():
-                file = File.objects.create(
-                    file_path=file_path,
-                    experiment=self.experiment,
-                    folder_watching_location=self.folder_watching_location,
-                    size=os.path.getsize(f),
-                    analysis=analysis
-                )
+        else:
+            if "cat_total_files" in self.content:
+                analysis.total_files = self.content["cat_total_files"]
+                analysis.save(update_fields=["total_files"])
 
+class ResultSummary(models.Model):
+    """
+    A data model for storing the result summary data with the following columns:
+    - created_at: the date and time the result summary was created
+    - updated_at: the date and time the result summary was last updated
+    - analysis: the analysis the result summary belongs to
+    - file: the file the result summary belongs to
+    - protein_identified: the number of proteins identified
+    - precursor_identified: the number of precursor ions identified
+    """
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    analysis = models.ForeignKey(Analysis, on_delete=models.SET_NULL, related_name="result_summary", blank=True, null=True)
+    file = models.ForeignKey(File, on_delete=models.SET_NULL, related_name="result_summary", blank=True, null=True)
+    protein_identified = models.IntegerField(blank=True, null=True)
+    precursor_identified = models.IntegerField(blank=True, null=True)
+
+    class Meta:
+        ordering = ["id"]
+        app_label = "catapult"
+
+    def __str__(self):
+        return f"{self.file.file_path}"
+
+    def __repr__(self):
+        return f"{self.file.file_path}"
+
+    def delete(self, using=None, keep_parents=False):
+        super().delete(using=using, keep_parents=keep_parents)
 
 
 class UserAPIKeyManager(BaseAPIKeyManager):

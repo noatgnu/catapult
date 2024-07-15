@@ -30,6 +30,7 @@ djangorestframework-api-key = "==2.*"
 drf-url-filters = "^0.5.1"
 psutil = "^5.9.8"
 django-tasks = "^0.2.0"
+pandas = "^2.2.2"
 
 
 [build-system]

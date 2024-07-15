@@ -188,7 +188,7 @@ class Command(BaseCommand):
             config: str,
         **options: dict,
     ) -> None:
-
+        print(verbosity)
         with open(config, "r") as f:
             config = json.load(f)
         self.configure_logging(verbosity, config["options"]["logfile"])

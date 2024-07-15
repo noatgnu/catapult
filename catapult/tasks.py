@@ -1,13 +1,18 @@
+import json
+import logging
+import os
+import subprocess
 from datetime import datetime, timedelta
 from typing import Callable, Optional, Union, Any
 
+import pandas as pd
 from django_tasks.task import P, ResultStatus
 from typing_extensions import Self
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 
-from catapult.models import Analysis, CeleryTask, CeleryWorker
+from catapult.models import Analysis, CeleryTask, CeleryWorker, File, CatapultRunConfig, ResultSummary
 
 from celery import shared_task, Task
 from django_tasks import Task as DjangoTask, BaseTaskBackend
@@ -383,6 +388,7 @@ def native_run_analysis(analysis_id: int, task_id: str = None, worker_hostname: 
         task.status = "FAILURE"
         task.save()
         raise e
+
     return analysis_id
 
 @native_task()
@@ -390,3 +396,164 @@ def calculate_meaning_of_life(task_id: str = "", worker_hostname: str = "") -> i
     print(task_id)
     print(worker_hostname)
     return 42
+
+@native_task()
+def run_diann_worker(commands: list[str], task_id: str = "", worker_hostname: str = "", analysis_id: int = None, config_id: int = None):
+    cWorker = CeleryWorker.objects.get(worker_hostname=worker_hostname)
+    logging_path = cWorker.worker_params["options"]["logfile"]
+    logger = logging.getLogger(f"catapult.worker{logging_path}")
+    config = CatapultRunConfig.objects.get(id=config_id)
+    parent_folder = os.path.dirname(config.config_file_path)
+    if task_id:
+        task = CeleryTask.objects.get(task_id=task_id)
+    else:
+        task = CeleryTask.objects.create(task_id=task_id)
+    analysis = Analysis.objects.get(id=analysis_id)
+    task.analysis = analysis
+    channel_layer = get_channel_layer()
+    async_to_sync(channel_layer.group_send)(
+        f"alert",
+        {
+            "type": "notification_message",
+            "message": {
+                "task_id": task_id,
+                "status": "RUNNING",
+            }
+        },
+    )
+
+    task.status = "RUNNING"
+    task.analysis_params = json.dumps(commands)
+    task.save()
+    try:
+        process = subprocess.Popen(commands, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        for line in process.stdout:
+            print(line)
+            output_line = line.decode("utf-8")
+            logger.info(output_line.strip())
+            async_to_sync(channel_layer.group_send)(
+                "analysis_log", {
+                    "type": "log_message",
+                    "message": {
+                        "task_id": task_id,
+                        "log": output_line,
+                        "hostname": worker_hostname,
+                        "timestamp": f"{datetime.now().timestamp()}",
+                    },
+                }
+            )
+        task.status = "COMPLETED"
+        if analysis.generating_quant.all().count() == analysis.total_files:
+            analysis.completed = True
+            analysis.save()
+        for file in analysis.generating_quant.all():
+            analysis.generated_quant.add(file)
+            analysis.generating_quant.remove(file)
+        if analysis.completed:
+            for file in analysis.generated_quant.all():
+                file.processing = False
+                file.save()
+
+    except Exception as e:
+        task.status = "FAILURE"
+        task.save()
+        raise e
+    report_stats_file = os.path.join(parent_folder, config.content["prefix"],
+                                     "report.stats.tsv")
+    if os.path.exists(report_stats_file):
+        data = pd.read_csv(str(report_stats_file), sep="\t")
+        for i, r in data.iterrows():
+            file_path = r["File.Name"].replace(config.folder_watching_location.folder_path,
+                                               "")
+            file = File.objects.get(file_path=file_path)
+            result_summary = ResultSummary.objects.filter(analysis=analysis, file=file)
+            if not result_summary.exists():
+                ResultSummary.objects.create(
+                    analysis=analysis,
+                    file=file,
+                    protein_identified=r["Protein.Identified"],
+                    precursor_identified=r["Precursor.Identified"]
+                )
+            else:
+                result_summary = result_summary.first()
+                if r["Protein.Identified"] != result_summary.protein_identified or r[
+                    "Precursor.Identified"] != result_summary.precursor_identified:
+                    result_summary.protein_identified = r["Protein.Identified"]
+                    result_summary.precursor_identified = r["Precursor.Identified"]
+                    result_summary.save()
+    return analysis_id
+
+def run_diann(commands: list[str], task_id: str = "", worker_hostname: str = "", analysis_id: int = None, config_id: int = None):
+    config = CatapultRunConfig.objects.get(id=config_id)
+    parent_folder = os.path.dirname(config.config_file_path)
+    if task_id:
+        task = CeleryTask.objects.get(task_id=task_id)
+    else:
+        task = CeleryTask.objects.create(task_id=task_id)
+    analysis = Analysis.objects.get(id=analysis_id)
+    analysis.save()
+    task.analysis = analysis
+    channel_layer = get_channel_layer()
+    async_to_sync(channel_layer.group_send)(
+        f"alert",
+        {
+            "type": "notification_message",
+            "message": {
+                "task_id": task_id,
+                "status": "RUNNING",
+            }
+        },
+    )
+
+    task.status = "RUNNING"
+    task.analysis_params = json.dumps(commands)
+    task.save()
+    try:
+        process = subprocess.Popen(commands, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        for line in process.stdout:
+            print(line)
+        task.status = "COMPLETED"
+        analysis.processing = False
+        analysis.save(update_fields=["processing"])
+        if analysis.generating_quant.all().count() == analysis.total_files:
+            analysis.completed = True
+            analysis.save()
+
+        for file in analysis.generating_quant.all():
+            analysis.generated_quant.add(file)
+            analysis.generating_quant.remove(file)
+        if analysis.completed:
+            for file in analysis.generated_quant.all():
+                file.processing = False
+                file.save()
+    except Exception as e:
+        task.status = "FAILURE"
+        task.save()
+        analysis.processing = False
+        analysis.save(update_fields=["processing"])
+        raise e
+    report_stats_file = os.path.join(parent_folder, config.content["prefix"],
+                                     "report.stats.tsv")
+    if os.path.exists(report_stats_file):
+        data = pd.read_csv(str(report_stats_file), sep="\t")
+        for i, r in data.iterrows():
+            file_path = r["File.Name"].replace(config.folder_watching_location.folder_path,
+                                               "")
+            file = File.objects.get(file_path=file_path)
+            result_summary = ResultSummary.objects.filter(analysis=analysis, file=file)
+            if not result_summary.exists():
+                ResultSummary.objects.create(
+                    analysis=analysis,
+                    file=file,
+                    protein_identified=r["Protein.Identified"],
+                    precursor_identified=r["Precursor.Identified"]
+                )
+            else:
+                result_summary = result_summary.first()
+                if r["Protein.Identified"] != result_summary.protein_identified or r["Precursor.Identified"] != result_summary.precursor_identified:
+                    result_summary.protein_identified = r["Protein.Identified"]
+                    result_summary.precursor_identified = r["Precursor.Identified"]
+                    result_summary.save()
+    return analysis_id
+
+

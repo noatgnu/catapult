@@ -146,3 +146,5 @@ xic_theoretical_fr: false # use theoretical fragment masses for XIC extraction
 unimod: # UniMod modification based on id
   - 4
 cat_ready: false
+cat_total_files: #N # total number of files to be processed
+cat_file_auto: false

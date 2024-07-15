@@ -2,13 +2,13 @@ import datetime
 import subprocess
 import time
 import os
-
+import pandas as pd
 from django.core.management.base import BaseCommand, CommandError
 from django.db.models import Q
 from django.utils.timezone import make_aware
 from django.db import transaction
-from catapult.models import Experiment, File, Analysis, CatapultRunConfig
-from catapult.tasks import run_analysis, run_quant
+from catapult.models import Experiment, File, Analysis, CatapultRunConfig, ResultSummary
+from catapult.tasks import run_analysis, run_quant, run_diann, run_diann_worker
 
 
 def get_folder_size(folder_path):
@@ -79,6 +79,7 @@ class Command(BaseCommand):
                     analysis__processing=False,
                 )
                 for config in configs:
+
                     if config.fasta_required:
                         for fasta in config.fasta.all():
                             if not fasta.ready:
@@ -90,12 +91,40 @@ class Command(BaseCommand):
                                 lib.check_ready()
                     if config.check_fasta_ready() and config.check_spectral_library_ready():
                         analysis = config.analysis.first()
-                        command = analysis.create_commands_from_config(dry_run=False)
-                        if not queue:
-                            subprocess.run(command, shell=True)
-                            analysis.processing = False
-                            analysis.completed = True
-                            analysis.save()
+                        if analysis.total_files:
+                            if analysis.generated_quant.all().count() == analysis.total_files:
+                                commands = analysis.create_commands_from_config(dry_run=False, all_files=True)
+                                analysis.processing = True
+                                analysis.save()
+                                if len(commands) > 0:
+                                    if not queue:
+                                        run_diann(commands=commands, analysis_id=analysis.id, config_id=config.id)
+                                    else:
+                                        run_diann_worker.enqueue(commands=commands, analysis_id=analysis.id,
+                                                                 config_id=config.id)
+                            else:
+                                if analysis.generated_quant.all().count() < analysis.experiment.files.filter(
+                                    ready_for_processing=True).count():
+                                    commands = analysis.create_commands_from_config(dry_run=False)
+                                    analysis.processing = True
+                                    analysis.save()
+                                    if len(commands) > 0:
+                                        if not queue:
+                                            run_diann(commands=commands, analysis_id=analysis.id, config_id=config.id)
+                                        else:
+                                            run_diann_worker.enqueue(commands=commands, analysis_id=analysis.id,
+                                                                     config_id=config.id)
+                        else:
+                            if analysis.generated_quant.all().count() < analysis.experiment.files.filter(
+                                    ready_for_processing=True).count():
+                                commands = analysis.create_commands_from_config(dry_run=False)
+                                analysis.processing = True
+                                analysis.save()
+                                if len(commands) > 0:
+                                    if not queue:
+                                        run_diann(commands=commands, analysis_id=analysis.id, config_id=config.id)
+                                    else:
+                                        run_diann_worker.enqueue(commands=commands, analysis_id=analysis.id, config_id=config.id)
 
 
 
