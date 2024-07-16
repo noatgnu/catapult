@@ -1,15 +1,16 @@
 from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework import viewsets, permissions, status
+from rest_framework.pagination import LimitOffsetPagination
 from rest_framework.parsers import JSONParser, FormParser, MultiPartParser
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from filters.mixins import FiltersMixin
 from catapult.models import File, Experiment, Analysis, FolderWatchingLocation, UserAPIKey, UploadedFile, CeleryTask, \
-    CeleryWorker
+    CeleryWorker, ResultSummary, LogRecord
 from catapult.serializers import FileSerializer, ExperimentSerializer, AnalysisSerializer, \
     FolderWatchLocationSerializer, UserAPIKeySerializer, UploadedFileSerializer, CeleryTaskSerializer, \
-    CeleryWorkerSerializer
+    CeleryWorkerSerializer, ResultSummarySerializer, LogRecordSerializer
 from catapult.tasks import run_analysis
 
 
@@ -267,3 +268,24 @@ class CeleryWorkerViewSet(viewsets.ReadOnlyModelViewSet, FiltersMixin):
     search_fields = ['worker_hostname', 'worker_status']
     ordering_fields = ['worker_hostname', 'worker_status']
 
+
+class ResultSummaryViewSet(viewsets.ReadOnlyModelViewSet, FiltersMixin):
+    queryset = ResultSummary.objects.all()
+    serializer_class = ResultSummarySerializer
+    filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
+    pagination_class = LimitOffsetPagination
+
+
+class LogRecordViewSet(viewsets.ReadOnlyModelViewSet, FiltersMixin):
+    queryset = LogRecord.objects.all()
+    serializer_class = LogRecordSerializer
+    filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
+    search_fields = ["log"]
+    ordering_fields = ["created_at"]
+    pagination_class = LimitOffsetPagination
+
+    def get_queryset(self):
+        worker_id = self.request.query_params.get("worker_id", None)
+        if worker_id:
+            return self.queryset.filter(task__worker_id=worker_id)
+        return self.queryset

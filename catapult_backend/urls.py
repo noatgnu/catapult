@@ -20,7 +20,7 @@ from rest_framework import routers
 
 from catapult.views import FileBrowserView
 from catapult.viewsets import UserAPIKeyViewSets, ExperimentViewSet, AnalysisViewSet, FileViewSet, UploadedFileViewSet, \
-    FolderWatchingLocationViewSet, CeleryTaskViewSet, CeleryWorkerViewSet
+    FolderWatchingLocationViewSet, CeleryTaskViewSet, CeleryWorkerViewSet, LogRecordViewSet
 
 router = routers.DefaultRouter()
 
@@ -32,6 +32,7 @@ router.register(r'api/uploadedfiles', UploadedFileViewSet)
 router.register(r'api/folderlocations', FolderWatchingLocationViewSet)
 router.register(r'api/tasks', CeleryTaskViewSet)
 router.register(r'api/workers', CeleryWorkerViewSet)
+router.register(r'api/logrecords', LogRecordViewSet)
 
 from rest_framework.authtoken import views
 

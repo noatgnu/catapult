@@ -6,13 +6,14 @@ from datetime import datetime, timedelta
 from typing import Callable, Optional, Union, Any
 
 import pandas as pd
+from django.utils import timezone
 from django_tasks.task import P, ResultStatus
 from typing_extensions import Self
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 
-from catapult.models import Analysis, CeleryTask, CeleryWorker, File, CatapultRunConfig, ResultSummary
+from catapult.models import Analysis, CeleryTask, CeleryWorker, File, CatapultRunConfig, ResultSummary, LogRecord
 
 from celery import shared_task, Task
 from django_tasks import Task as DjangoTask, BaseTaskBackend
@@ -429,20 +430,24 @@ def run_diann_worker(commands: list[str], task_id: str = "", worker_hostname: st
         process = subprocess.Popen(commands, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         for line in process.stdout:
             print(line)
-            output_line = line.decode("utf-8")
-            logger.info(output_line.strip())
-            async_to_sync(channel_layer.group_send)(
-                "analysis_log", {
-                    "type": "log_message",
-                    "message": {
-                        "task_id": task_id,
-                        "log": output_line,
-                        "hostname": worker_hostname,
-                        "timestamp": f"{datetime.now().timestamp()}",
-                    },
-                }
-            )
-        task.status = "COMPLETED"
+            output_line = line.decode("utf-8").strip()
+            if output_line:
+                LogRecord.objects.create(
+                    task=task,
+                    log=output_line.strip()
+                )
+                async_to_sync(channel_layer.group_send)(
+                    "analysis_log", {
+                        "type": "log_message",
+                        "message": {
+                            "task_id": task_id,
+                            "log": output_line,
+                            "hostname": worker_hostname,
+                            "timestamp": f"{datetime.now().timestamp()}",
+                        },
+                    }
+                )
+
         if analysis.generating_quant.all().count() == analysis.total_files:
             analysis.completed = True
             analysis.save()
@@ -453,9 +458,10 @@ def run_diann_worker(commands: list[str], task_id: str = "", worker_hostname: st
             for file in analysis.generated_quant.all():
                 file.processing = False
                 file.save()
-
+        task.status = "SUCCESS"
+        task.save()
     except Exception as e:
-        task.status = "FAILURE"
+        task.status = "FAILED"
         task.save()
         raise e
     report_stats_file = os.path.join(parent_folder, config.content["prefix"],
@@ -492,7 +498,8 @@ def run_diann_worker(commands: list[str], task_id: str = "", worker_hostname: st
                     )
                     result_summary.save()
     analysis.processing = False
-    analysis.save(update_fields=["processing"])
+    analysis.stop_time = timezone.now()
+    analysis.save(update_fields=["processing", "stop_time"])
     return analysis_id
 
 def run_diann(commands: list[str], task_id: str = "", worker_hostname: str = "", analysis_id: int = None, config_id: int = None):
@@ -522,9 +529,17 @@ def run_diann(commands: list[str], task_id: str = "", worker_hostname: str = "",
     task.save()
     try:
         process = subprocess.Popen(commands, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        analysis.commands = subprocess.list2cmdline(commands)
+        analysis.output_folder = os.path.join(parent_folder, config.content["prefix"])
+        analysis.save(update_fields=["commands"])
         for line in process.stdout:
-            print(line)
-        task.status = "COMPLETED"
+            line = line.decode("utf-8").strip()
+            if line:
+                LogRecord.objects.create(
+                    task=task,
+                    log=line
+                )
+
         analysis.processing = False
         analysis.save(update_fields=["processing"])
         if analysis.generating_quant.all().count() == analysis.total_files:
@@ -538,8 +553,10 @@ def run_diann(commands: list[str], task_id: str = "", worker_hostname: str = "",
             for file in analysis.generated_quant.all():
                 file.processing = False
                 file.save()
+        task.status = "SUCCESS"
+        task.save()
     except Exception as e:
-        task.status = "FAILURE"
+        task.status = "FAILED"
         task.save()
         analysis.processing = False
         analysis.save(update_fields=["processing"])
@@ -557,8 +574,8 @@ def run_diann(commands: list[str], task_id: str = "", worker_hostname: str = "",
                 ResultSummary.objects.create(
                     analysis=analysis,
                     file=file,
-                    protein_identified=r["Protein.Identified"],
-                    precursor_identified=r["Precursor.Identified"],
+                    protein_identified=r["Proteins.Identified"],
+                    precursor_identified=r["Precursors.Identified"],
                     log_file=os.path.join(
                         str(parent_folder.replace(config.folder_watching_location.folder_path, "")),
                         config.content["prefix"],
@@ -567,9 +584,9 @@ def run_diann(commands: list[str], task_id: str = "", worker_hostname: str = "",
                 )
             else:
                 result_summary = result_summary.first()
-                if r["Protein.Identified"] != result_summary.protein_identified or r["Precursor.Identified"] != result_summary.precursor_identified:
-                    result_summary.protein_identified = r["Protein.Identified"]
-                    result_summary.precursor_identified = r["Precursor.Identified"]
+                if r["Proteins.Identified"] != result_summary.protein_identified or r["Precursors.Identified"] != result_summary.precursor_identified:
+                    result_summary.protein_identified = r["Proteins.Identified"]
+                    result_summary.precursor_identified = r["Precursors.Identified"]
                     result_summary.log_file = os.path.join(
                         str(parent_folder.replace(config.folder_watching_location.folder_path, "")),
                         config.content["prefix"],
@@ -577,7 +594,8 @@ def run_diann(commands: list[str], task_id: str = "", worker_hostname: str = "",
                     )
                     result_summary.save()
     analysis.processing = False
-    analysis.save(update_fields=["processing"])
+    analysis.stop_time = timezone.now()
+    analysis.save(update_fields=["processing", "stop_time"])
     return analysis_id
 
 

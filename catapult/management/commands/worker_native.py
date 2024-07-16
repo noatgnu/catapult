@@ -196,6 +196,8 @@ class Command(BaseCommand):
         cWorker.worker_params = config
         cWorker.worker_info = get_system_info()
         cWorker.worker_status = "ONLINE"
+        for task in cWorker.tasks.all():
+            cWorker.tasks.remove(task)
         cWorker.save()
 
         worker = CatapultWorker(

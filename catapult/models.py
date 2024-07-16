@@ -726,6 +726,33 @@ class UploadedFile(models.Model):
     def delete(self, using=None, keep_parents=False):
         super().delete(using=using, keep_parents=keep_parents)
 
+class LogRecord(models.Model):
+    """
+    A data model for storing the log record with the following column:
+    - created_at: the date and time the log record was created
+    - updated_at: the date and time the log record was last updated
+    - log: the log message
+    - task: the task the log record belongs to
+    """
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    log = models.TextField(blank=False, null=False)
+    task = models.ForeignKey("CeleryTask", on_delete=models.CASCADE, related_name="logs")
+
+    class Meta:
+        ordering = ["id"]
+        app_label = "catapult"
+
+    def __str__(self):
+        return f"{self.log}"
+
+    def __repr__(self):
+        return f"{self.log}"
+
+    def delete(self, using=None, keep_parents=False):
+        super().delete(using=using, keep_parents=keep_parents)
+
 
 class CeleryTask(models.Model):
     """
