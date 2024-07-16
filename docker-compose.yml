@@ -11,12 +11,15 @@ services:
     restart: always
     ports:
       - "80:80"
+      - "443:443"
     volumes:
       - ./media:/media/
       - ./staticfiles:/static/
+      - catapultssl:/certs
     depends_on:
       - catapult
       - catapultfrontend
+      - catapultssl
     networks:
       - catapult-net
   catapultfrontend:
@@ -77,7 +80,14 @@ services:
       - "6379:6379"
     networks:
       - catapult-net
-
+  catapultssl:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/Dockerfile-ssl
+    volumes:
+      - catapultssl:/certs
 networks:
     catapult-net:
 
+volumes:
+  catapultssl:

@@ -29,16 +29,39 @@ Modify the `settings.py` file in the `catapult_backend` directory at the DIANN_P
 or in your terminal or environment variable editor, set the following environment variables:
 - DIANN_PATH: The path to the `DiaNN.exe` executable
 
-### To setup a folder to be watched
+### To setup a process to watch for new files and dispatch the job for processing them
 
-In the terminal, run `python manage.py watch_folder <folder_path> <whether_the_location_is_networked> <file_extensions_delimited_by_commas>`
+In the terminal, run `python manage.py start_sentinel`
 
 ### To setup a process to check for files that are ready to be processed and dispatch the job for processing them
 
-In the terminal, run `python manage.py database_check <check_interval_in_seconds> <time_delta_since_last_file_size_change>`
+In the terminal, run `python manage.py database_check --queue`
 
-### To setup a work queue to process the dispatched jobs
+### To create a worker to process the dispatched jobs
 
-In the terminal, run `celery -A catapult_backend worker --loglevel=INFO -P solo`
+In the terminal, run `python manage.py create_worker_template <worker_name> <hostname>`
+
+The above would create a worker template json file (example below) in the base folder of the project. Modify the file to include the necessary parameters for the worker to process the job.
+
+```json
+{
+    "name": "worker1",
+    "type": "worker",
+    "options": {
+        "concurrency": 1,
+        "loglevel": "INFO",
+        "app": "catapult_backend",
+        "hostname": "worker1@diann",
+        "P": "solo",
+        "Q": "default",
+        "logfile": "worker1.log"
+    },
+    "folder_path_translations": {}
+}
+```
+Not all parameters in worker template are currently being used.
+
+Then to run the worker, `python manage.py worker_native --config=<worker_template_file> --verbosity=2`
+
 
 
