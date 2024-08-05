@@ -2,6 +2,7 @@ import datetime
 import logging
 import time
 import os
+import uuid
 
 import yaml
 from django.core.management.base import BaseCommand, CommandError
@@ -10,7 +11,9 @@ from django.db.models import Q
 from watchdog.observers.polling import PollingObserverVFS
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
-from catapult.models import File, FolderWatchingLocation, Experiment, CatapultRunConfig
+from catapult.models import File, FolderWatchingLocation, Experiment, CatapultRunConfig, ResultSummary
+from catapult.util import extract_cmd_from_diann_log, convert_cmd_to_array, convert_cmd_array_to_config, \
+    add_stats_and_report
 
 logger = logging.getLogger(f"catapult.sentinel")
 def load_config_yaml(file_path, folder_watching_location):
@@ -34,6 +37,7 @@ def load_config_yaml(file_path, folder_watching_location):
                     folder_watching_location=folder_watching_location,
                 )
                 logger.info(f"config file {file_path} loaded successfully")
+
 def get_folder_size(folder_path):
     total_size = 0
     for dirpath, dirnames, filenames in os.walk(folder_path):
@@ -76,8 +80,43 @@ def initial_scan(folder_watching_location: FolderWatchingLocation):
                         )
             elif file.endswith(".cat.yml") or file.endswith(".cat.yaml"):
                 load_config_yaml(file_path, folder_watching_location)
+            elif file.endswith("report.stats.tsv"):
+                #check if the file is already in the database
+                file_path_from_watch = file_path.replace(folder_watching_location.folder_path, "")
+                if not ResultSummary.objects.filter(stats_file=file_path_from_watch).exists():
+                    #check if report.log.txt exists in the same folder
+                    report_log = os.path.join(root, "report.log.txt")
+                    experiment, prefix = os.path.split(root)
+                    experiment_obj = Experiment.objects.get_or_create(experiment_name=experiment)[0]
+                    cat_config = CatapultRunConfig.objects.filter(content__prefix=prefix, experiment=experiment_obj)
+                    print(cat_config)
+                    if not cat_config.exists():
+                        cat_file = os.path.join(experiment, f"{uuid.uuid4().hex}.cat.yml")
+                        if os.path.exists(report_log):
+                            cmd = extract_cmd_from_diann_log(report_log)
+                            cmd_array = convert_cmd_to_array(cmd)
+                            config = convert_cmd_array_to_config(cmd_array)
+                            config["prefix"] = prefix
 
-
+                            config_obj = CatapultRunConfig(
+                                content=config,
+                                folder_watching_location=folder_watching_location,
+                                experiment=experiment_obj,
+                                config_file_path=cat_file,
+                            )
+                            with open(cat_file, "w") as f:
+                                yaml.dump(config, f)
+                            config_obj.save()
+                        else:
+                            continue
+                    else:
+                        config_obj = cat_config.first()
+                    add_stats_and_report(
+                        analysis=config_obj.analysis.first(),
+                        config=config_obj,
+                        parent_folder=os.path.dirname(config_obj.config_file_path),
+                        report_stats_file=file_path
+                    )
 
 class Watcher(FileSystemEventHandler):
     def __init__(self, folder: FolderWatchingLocation, *args, **kwargs):

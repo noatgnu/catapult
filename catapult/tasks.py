@@ -5,7 +5,6 @@ import subprocess
 from datetime import datetime, timedelta
 from typing import Callable, Optional, Union, Any
 
-import pandas as pd
 from django.utils import timezone
 from django_tasks.task import P, ResultStatus
 from typing_extensions import Self
@@ -13,7 +12,7 @@ from typing_extensions import Self
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 
-from catapult.models import Analysis, CeleryTask, CeleryWorker, File, CatapultRunConfig, ResultSummary, LogRecord
+from catapult.models import Analysis, CeleryTask, CeleryWorker, CatapultRunConfig, LogRecord
 
 from celery import shared_task, Task
 from django_tasks import Task as DjangoTask, BaseTaskBackend
@@ -22,6 +21,7 @@ from django_tasks.task import TaskResult
 
 from uuid import uuid4
 
+from catapult.util import add_stats_and_report
 
 
 class CatapultTaskResult(TaskResult):
@@ -428,6 +428,9 @@ def run_diann_worker(commands: list[str], task_id: str = "", worker_hostname: st
     task.save()
     try:
         process = subprocess.Popen(commands, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        analysis.commands = subprocess.list2cmdline(commands)
+        analysis.output_folder = os.path.join(str(parent_folder.replace(config.folder_watching_location.folder_path, "")), config.content["prefix"])
+        analysis.save()
         for line in process.stdout:
             print(line)
             output_line = line.decode("utf-8").strip()
@@ -460,47 +463,20 @@ def run_diann_worker(commands: list[str], task_id: str = "", worker_hostname: st
                 file.save()
         task.status = "SUCCESS"
         task.save()
+        cWorker.tasks.remove(task)
+        cWorker.save()
     except Exception as e:
         task.status = "FAILED"
         task.save()
         raise e
     report_stats_file = os.path.join(parent_folder, config.content["prefix"],
                                      "report.stats.tsv")
-    if os.path.exists(report_stats_file):
-        data = pd.read_csv(str(report_stats_file), sep="\t")
-        for i, r in data.iterrows():
-            file_path = r["File.Name"].replace(config.folder_watching_location.folder_path,
-                                               "")
-            file = File.objects.get(file_path=file_path)
-            result_summary = ResultSummary.objects.filter(analysis=analysis, file=file)
-            if not result_summary.exists():
-                ResultSummary.objects.create(
-                    analysis=analysis,
-                    file=file,
-                    protein_identified=r["Proteins.Identified"],
-                    precursor_identified=r["Precursors.Identified"],
-                    log_file=os.path.join(
-                        str(parent_folder.replace(config.folder_watching_location.folder_path, "")),
-                        config.content["prefix"],
-                        "report.stats.tsv"
-                    )
-                )
-            else:
-                result_summary = result_summary.first()
-                if r["Proteins.Identified"] != result_summary.protein_identified or r[
-                    "Precursors.Identified"] != result_summary.precursor_identified:
-                    result_summary.protein_identified = r["Proteins.Identified"]
-                    result_summary.precursor_identified = r["Precursors.Identified"]
-                    result_summary.log_file = os.path.join(
-                        str(parent_folder.replace(config.folder_watching_location.folder_path, "")),
-                        config.content["prefix"],
-                        "report.stats.tsv"
-                    )
-                    result_summary.save()
+    add_stats_and_report(analysis, config, parent_folder, report_stats_file)
     analysis.processing = False
     analysis.stop_time = timezone.now()
     analysis.save(update_fields=["processing", "stop_time"])
     return analysis_id
+
 
 def run_diann(commands: list[str], task_id: str = "", worker_hostname: str = "", analysis_id: int = None, config_id: int = None):
     config = CatapultRunConfig.objects.get(id=config_id)
@@ -531,7 +507,7 @@ def run_diann(commands: list[str], task_id: str = "", worker_hostname: str = "",
         process = subprocess.Popen(commands, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         analysis.commands = subprocess.list2cmdline(commands)
         analysis.output_folder = os.path.join(parent_folder, config.content["prefix"])
-        analysis.save(update_fields=["commands"])
+        analysis.save()
         for line in process.stdout:
             line = line.decode("utf-8").strip()
             if line:
@@ -563,39 +539,13 @@ def run_diann(commands: list[str], task_id: str = "", worker_hostname: str = "",
         raise e
     report_stats_file = os.path.join(parent_folder, config.content["prefix"],
                                      "report.stats.tsv")
-    if os.path.exists(report_stats_file):
-        data = pd.read_csv(str(report_stats_file), sep="\t")
-        for i, r in data.iterrows():
-            file_path = r["File.Name"].replace(config.folder_watching_location.folder_path,
-                                               "")
-            file = File.objects.get(file_path=file_path)
-            result_summary = ResultSummary.objects.filter(analysis=analysis, file=file)
-            if not result_summary.exists():
-                ResultSummary.objects.create(
-                    analysis=analysis,
-                    file=file,
-                    protein_identified=r["Proteins.Identified"],
-                    precursor_identified=r["Precursors.Identified"],
-                    log_file=os.path.join(
-                        str(parent_folder.replace(config.folder_watching_location.folder_path, "")),
-                        config.content["prefix"],
-                        "report.stats.tsv"
-                    )
-                )
-            else:
-                result_summary = result_summary.first()
-                if r["Proteins.Identified"] != result_summary.protein_identified or r["Precursors.Identified"] != result_summary.precursor_identified:
-                    result_summary.protein_identified = r["Proteins.Identified"]
-                    result_summary.precursor_identified = r["Precursors.Identified"]
-                    result_summary.log_file = os.path.join(
-                        str(parent_folder.replace(config.folder_watching_location.folder_path, "")),
-                        config.content["prefix"],
-                        "report.stats.tsv"
-                    )
-                    result_summary.save()
+    add_stats_and_report(analysis, config, parent_folder, report_stats_file)
+
+
     analysis.processing = False
     analysis.stop_time = timezone.now()
     analysis.save(update_fields=["processing", "stop_time"])
     return analysis_id
+
 
 

@@ -203,7 +203,8 @@ class Analysis(models.Model):
     - log: the log of the analysis
     - commands: the commands used for the analysis
     """
-    analysis_name = models.CharField(max_length=200, blank=False, null=False, unique=True, db_index=True)
+    analysis_name = models.TextField(blank=True, null=True)
+    analysis_path = models.TextField(blank=False, null=False, unique=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     experiment = models.ForeignKey(Experiment, on_delete=models.CASCADE, related_name="analysis")
@@ -219,7 +220,7 @@ class Analysis(models.Model):
     processing = models.BooleanField(default=False)
     completed = models.BooleanField(default=False)
     log = models.TextField(blank=True, null=True)
-    commands = models.TextField(blank=True, null=True, default=DEFAULT_DIANN_PARAMS)
+    commands = models.TextField(blank=True, null=True, default="")
     output_folder = models.TextField(blank=True, null=True)
     default_analysis = models.BooleanField(default=False)
     generating_quant = models.ManyToManyField("File", related_name="quant_files", blank=True)
@@ -233,10 +234,10 @@ class Analysis(models.Model):
         verbose_name_plural = "Analyses"
 
     def __str__(self):
-        return f"{self.analysis_name}"
+        return f"{self.analysis_path}"
 
     def __repr__(self):
-        return f"{self.analysis_name}"
+        return f"{self.analysis_path}"
 
     def delete(self, using=None, keep_parents=False):
         super().delete(using=using, keep_parents=keep_parents)
@@ -553,7 +554,7 @@ class CatapultRunConfig(models.Model):
         parent_folder = os.path.dirname(self.config_file_path).replace(self.folder_watching_location.folder_path, "")
         analysis = Analysis.objects.create(
             experiment=self.experiment,
-            analysis_name=self.config_file_path,
+            analysis_path=self.config_file_path,
             config=self
         )
         if "prefix" in self.content:
@@ -623,21 +624,25 @@ class CatapultRunConfig(models.Model):
 
         self.save(update_fields=["content", "fasta_required", "spectral_library_required"])
         if "f" in self.content:
-            if isinstance(self.content["f"], list):
-                analysis.total_files = len(self.content["f"])
-                analysis.save()
-                for f in self.content["f"]:
-                    file_path = os.path.join(parent_folder, f)
-                    experiment_files = File.objects.filter(experiment=self.experiment, file_path=file_path)
-                    if not experiment_files.exists():
-                        file = File.objects.create(
-                            file_path=file_path,
-                            experiment=self.experiment,
-                            folder_watching_location=self.folder_watching_location,
-                            size=os.path.getsize(f),
-                            analysis=analysis
-                        )
-
+            if self.content["f"]:
+                if isinstance(self.content["f"], list):
+                    analysis.total_files = len(self.content["f"])
+                    analysis.save()
+                    for f in self.content["f"]:
+                        file_path = os.path.join(parent_folder, f)
+                        experiment_files = File.objects.filter(experiment=self.experiment, file_path=file_path)
+                        if not experiment_files.exists():
+                            file = File.objects.create(
+                                file_path=file_path,
+                                experiment=self.experiment,
+                                folder_watching_location=self.folder_watching_location,
+                                size=os.path.getsize(f),
+                                analysis=analysis
+                            )
+            else:
+                if "cat_total_files" in self.content:
+                    analysis.total_files = self.content["cat_total_files"]
+                    analysis.save(update_fields=["total_files"])
         else:
             if "cat_total_files" in self.content:
                 analysis.total_files = self.content["cat_total_files"]
@@ -659,6 +664,7 @@ class ResultSummary(models.Model):
     file = models.ForeignKey(File, on_delete=models.SET_NULL, related_name="result_summary", blank=True, null=True)
     protein_identified = models.IntegerField(blank=True, null=True)
     precursor_identified = models.IntegerField(blank=True, null=True)
+    stats_file = models.TextField(blank=True, null=True)
     log_file = models.TextField(blank=True, null=True)
 
     class Meta:
@@ -749,6 +755,64 @@ class LogRecord(models.Model):
 
     def __repr__(self):
         return f"{self.log}"
+
+    def delete(self, using=None, keep_parents=False):
+        super().delete(using=using, keep_parents=keep_parents)
+
+class PrecursorReportContent(models.Model):
+    """
+    A data model for storing the precursor report with the following column:
+    - result_summary: the result summary the precursor report belongs to
+    - precursor_id: precursor id
+    - gene_names: gene names
+    - protein_group: protein groups
+    - proteotypic: proteotypic
+    - intensity: intensity
+    """
+    result_summary = models.ForeignKey(ResultSummary, on_delete=models.CASCADE, related_name="precursor_report_content")
+    precursor_id = models.TextField(blank=False, null=False)
+    gene_names = models.TextField(blank=True, null=True)
+    protein_group = models.TextField(blank=True, null=True)
+    proteotypic = models.BooleanField(default=False)
+    intensity = models.FloatField(blank=True, null=True)
+    file = models.ForeignKey(File, on_delete=models.CASCADE, related_name="precursor_report_content", blank=True, null=True)
+
+    class Meta:
+        ordering = ["id"]
+        app_label = "catapult"
+
+    def __str__(self):
+        return f"{self.precursor_id}"
+
+    def __repr__(self):
+        return f"{self.precursor_id}"
+
+    def delete(self, using=None, keep_parents=False):
+        super().delete(using=using, keep_parents=keep_parents)
+
+class ProteinGroupReportContent(models.Model):
+    """
+    A data model for storing the protein group report with the following column:
+    - result_summary: the result summary the protein group report belongs to
+    - gene_names: gene names
+    - protein_group: protein group
+    - file: the file the protein group report belongs to
+    """
+    result_summary = models.ForeignKey(ResultSummary, on_delete=models.CASCADE, related_name="protein_group_report_content")
+    gene_names = models.TextField(blank=True, null=True)
+    protein_group = models.CharField(max_length=200, blank=False, null=False)
+    file = models.ForeignKey(File, on_delete=models.CASCADE, related_name="protein_group_report_content", blank=True, null=True)
+    intensity = models.FloatField(blank=True, null=True)
+
+    class Meta:
+        ordering = ["id"]
+        app_label = "catapult"
+
+    def __str__(self):
+        return f"{self.protein_group}"
+
+    def __repr__(self):
+        return f"{self.protein_group}"
 
     def delete(self, using=None, keep_parents=False):
         super().delete(using=using, keep_parents=keep_parents)

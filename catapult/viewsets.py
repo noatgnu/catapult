@@ -1,3 +1,8 @@
+import json
+from datetime import timedelta
+
+from django.db.models import Q, Avg, Count, Case, When, IntegerField
+from django.utils import timezone
 from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework import viewsets, permissions, status
@@ -5,16 +10,18 @@ from rest_framework.pagination import LimitOffsetPagination
 from rest_framework.parsers import JSONParser, FormParser, MultiPartParser
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
-from filters.mixins import FiltersMixin
+from django_filters.views import FilterMixin
 from catapult.models import File, Experiment, Analysis, FolderWatchingLocation, UserAPIKey, UploadedFile, CeleryTask, \
-    CeleryWorker, ResultSummary, LogRecord
+    CeleryWorker, ResultSummary, LogRecord, PrecursorReportContent, ProteinGroupReportContent
 from catapult.serializers import FileSerializer, ExperimentSerializer, AnalysisSerializer, \
     FolderWatchLocationSerializer, UserAPIKeySerializer, UploadedFileSerializer, CeleryTaskSerializer, \
-    CeleryWorkerSerializer, ResultSummarySerializer, LogRecordSerializer
+    CeleryWorkerSerializer, ResultSummarySerializer, LogRecordSerializer, PrecursorReportContentSerializer, \
+    ProteinGroupReportContentSerializer
 from catapult.tasks import run_analysis
+from catapult.util import blank_diann_config
 
 
-class FileViewSet(viewsets.ModelViewSet, FiltersMixin):
+class FileViewSet(viewsets.ModelViewSet, FilterMixin):
     queryset = File.objects.all()
     serializer_class = FileSerializer
     parser_classes = (JSONParser, FormParser, MultiPartParser)
@@ -25,7 +32,7 @@ class FileViewSet(viewsets.ModelViewSet, FiltersMixin):
 
 
 
-class ExperimentViewSet(viewsets.ModelViewSet, FiltersMixin):
+class ExperimentViewSet(viewsets.ModelViewSet, FilterMixin):
     queryset = Experiment.objects.all()
     serializer_class = ExperimentSerializer
     parser_classes = (JSONParser, FormParser, MultiPartParser)
@@ -85,18 +92,98 @@ class ExperimentViewSet(viewsets.ModelViewSet, FiltersMixin):
         data = FileSerializer(files, many=True, context={"request": request}).data
         return Response(data=data, status=status.HTTP_200_OK)
 
-class AnalysisViewSet(viewsets.ModelViewSet, FiltersMixin):
+    @action(detail=True, methods=["get"])
+    def get_result_summaries(self, request, pk=None):
+        experiment = self.get_object()
+        analyses = experiment.analysis.all()
+        result_summary = ResultSummary.objects.filter(analysis__in=analyses)
+        return Response(data=ResultSummarySerializer(result_summary, many=True, context={"request": request}).data, status=status.HTTP_200_OK)
+
+
+
+class AnalysisViewSet(viewsets.ModelViewSet, FilterMixin):
     queryset = Analysis.objects.all()
     serializer_class = AnalysisSerializer
     parser_classes = (JSONParser, FormParser, MultiPartParser)
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
-    ordering_fields = ['id', 'created_at', 'updated_at', 'analysis_name', 'experiment', 'analysis_type', 'completed']
-    search_fields = ['analysis_name']
+    ordering_fields = ['id', 'created_at', 'updated_at', 'analysis_path', 'experiment', 'analysis_type', 'completed']
+    search_fields = ['analysis_path']
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        query = Q()
+        min_precursor = self.request.query_params.get("min_precursor", None)
+        if min_precursor:
+            queryset = queryset.annotate(
+                min_precursor_count=Count(
+                    Case(
+                        When(result_summary__precursor_identified__gte=min_precursor, then=1),
+                        output_field=IntegerField()
+                    )
+                )
+            )
+            query &= Q(min_precursor_count__gt=0)
+
+        max_precursor = self.request.query_params.get("max_precursor", None)
+        if max_precursor:
+            queryset = queryset.annotate(
+                max_precursor_count=Count(
+                    Case(
+                        When(result_summary__precursor_identified__lte=max_precursor, then=1),
+                        output_field=IntegerField()
+                    )
+                )
+            )
+            query &= Q(max_precursor_count__gt=0)
+
+        min_protein = self.request.query_params.get("min_protein", None)
+        if min_protein:
+            queryset = queryset.annotate(
+                min_protein_count=Count(
+                    Case(
+                        When(result_summary__protein_identified__gte=min_protein, then=1),
+                        output_field=IntegerField()
+                    )
+                )
+            )
+            query &= Q(min_protein_count__gt=0)
+
+        max_protein = self.request.query_params.get("max_protein", None)
+        if max_protein:
+            queryset = queryset.annotate(
+                max_protein_count=Count(
+                    Case(
+                        When(result_summary__protein_identified__lte=max_protein, then=1),
+                        output_field=IntegerField()
+                    )
+                )
+            )
+            query &= Q(max_protein_count__gt=0)
+
+        for i in blank_diann_config:
+            config_item = self.request.query_params.get(i, None)
+            if config_item:
+                if blank_diann_config[i] == "list":
+                    config_item = config_item.split(",")
+                    for item in config_item:
+                        query &= Q(**{f"config__content__{i}__contains": item})
+
+                elif blank_diann_config[i] == "bool":
+                    if config_item.lower() == "true":
+                        query &= Q(**{f"config__content__{i}": True})
+                    elif config_item.lower() == "false":
+                        query &= Q(**{f"config__content__{i}": False})
+                elif blank_diann_config[i] == "number":
+                    query &= Q(**{f"config__content__{i}": config_item})
+                else:
+                    query &= Q(**{f"config__content__{i}__contains": config_item})
+
+        return queryset.filter(query)
 
     def create(self, request, *args, **kwargs):
         analysis = Analysis.objects.create(
-            analysis_name=request.data["analysis_name"],
+            analysis_name=request.data["analysis_path"],
             experiment=Experiment.objects.get(id=request.data["experiment"]),
             analysis_type=request.data["analysis_type"],
         )
@@ -110,9 +197,13 @@ class AnalysisViewSet(viewsets.ModelViewSet, FiltersMixin):
 
     def update(self, request, *args, **kwargs):
         analysis = self.get_object()
-        analysis.analysis_name = request.data["analysis_name"]
+        if "analysis_path" in request.data:
+            analysis.analysis_path = request.data["analysis_path"]
         analysis.experiment = Experiment.objects.get(id=request.data["experiment"])
-        analysis.analysis_type = request.data["analysis_type"]
+        if "analysis_type" in request.data:
+            analysis.analysis_type = request.data["analysis_type"]
+        if "analysis_name" in request.data:
+            analysis.analysis_name = request.data["analysis_name"]
         if "fasta_file" in request.data:
             analysis.fasta_file = request.data["fasta_file"]
         if "spectral_library" in request.data:
@@ -163,10 +254,17 @@ class AnalysisViewSet(viewsets.ModelViewSet, FiltersMixin):
 
         return Response(status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=["get"])
+    def get_result_summaries(self, request, pk=None):
+        analysis = self.get_object()
+        result_summary = analysis.result_summary.all()
+        data = ResultSummarySerializer(result_summary, many=True, context={"request": request}).data
+        return Response(data=data, status=status.HTTP_200_OK)
 
 
 
-class FolderWatchingLocationViewSet(viewsets.ModelViewSet, FiltersMixin):
+
+class FolderWatchingLocationViewSet(viewsets.ModelViewSet, FilterMixin):
     queryset = FolderWatchingLocation.objects.all()
     serializer_class = FolderWatchLocationSerializer
     parser_classes = (JSONParser, FormParser, MultiPartParser)
@@ -174,7 +272,7 @@ class FolderWatchingLocationViewSet(viewsets.ModelViewSet, FiltersMixin):
     filter_backends = [DjangoFilterBackend]
 
 
-class UserAPIKeyViewSets(viewsets.ModelViewSet, FiltersMixin):
+class UserAPIKeyViewSets(viewsets.ModelViewSet, FilterMixin):
     queryset = UserAPIKey.objects.all()
     serializer_class = UserAPIKeySerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
@@ -204,7 +302,7 @@ class UserAPIKeyViewSets(viewsets.ModelViewSet, FiltersMixin):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class UploadedFileViewSet(viewsets.ModelViewSet, FiltersMixin):
+class UploadedFileViewSet(viewsets.ModelViewSet, FilterMixin):
     queryset = UploadedFile.objects.all()
     serializer_class = UploadedFileSerializer
     parser_classes = (MultiPartParser,)
@@ -237,7 +335,7 @@ class UploadedFileViewSet(viewsets.ModelViewSet, FiltersMixin):
         return data_object
 
 
-class CeleryTaskViewSet(viewsets.ReadOnlyModelViewSet, FiltersMixin):
+class CeleryTaskViewSet(viewsets.ReadOnlyModelViewSet, FilterMixin):
     queryset = CeleryTask.objects.all()
     serializer_class = CeleryTaskSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
@@ -260,7 +358,7 @@ class CeleryTaskViewSet(viewsets.ReadOnlyModelViewSet, FiltersMixin):
         return Response(data=data, status=status.HTTP_200_OK)
 
 
-class CeleryWorkerViewSet(viewsets.ReadOnlyModelViewSet, FiltersMixin):
+class CeleryWorkerViewSet(viewsets.ReadOnlyModelViewSet, FilterMixin):
     queryset = CeleryWorker.objects.all()
     serializer_class = CeleryWorkerSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
@@ -269,14 +367,62 @@ class CeleryWorkerViewSet(viewsets.ReadOnlyModelViewSet, FiltersMixin):
     ordering_fields = ['worker_hostname', 'worker_status']
 
 
-class ResultSummaryViewSet(viewsets.ReadOnlyModelViewSet, FiltersMixin):
+class ResultSummaryViewSet(viewsets.ReadOnlyModelViewSet, FilterMixin):
     queryset = ResultSummary.objects.all()
     serializer_class = ResultSummarySerializer
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
     pagination_class = LimitOffsetPagination
+    search_fields = ["analysis__experiment__experiment_name", "analysis__analysis_path"]
+    ordering_fields = ["id", "analysis__experiment__experiment_name", "analysis__analysis_path", "created_at"]
+
+    def get_queryset(self):
+        query = Q()
+        experiment = self.request.query_params.get("experiment", None)
+        if experiment:
+            query &= Q(analysis__experiment__id=experiment)
+        analysis = self.request.query_params.get("analysis", None)
+        if analysis:
+            query &= Q(analysis__id=analysis)
+        min_protein = self.request.query_params.get("min_protein", None)
+        if min_protein:
+            query &= Q(protein_identified__gte=min_protein)
+        max_protein = self.request.query_params.get("max_protein", None)
+        if max_protein:
+            query &= Q(protein_identified__lte=max_protein)
+        min_precursor = self.request.query_params.get("min_precursor", None)
+        if min_precursor:
+            query &= Q(precursor_identified__gte=min_precursor)
+        max_precursor = self.request.query_params.get("max_precursor", None)
+        if max_precursor:
+            query &= Q(precursor_identified__lte=max_precursor)
+
+        return self.queryset.filter(query)
+
+    def get_object(self):
+        object = super().get_object()
+        return object
+
+    @action(detail=False, methods=["get"])
+    def get_last_month(self):
+        analyses_last_month = Analysis.objects.filter(created_at__gte=timezone.now() - timedelta(days=30))
+        result_summaries = ResultSummary.objects.filter(analysis__in=analyses_last_month)
+        #calculate the mean of the protein_identified and precursor_identified for each analysis
+        data = []
+        for analysis in analyses_last_month:
+            result_summary = result_summaries.filter(analysis=analysis)
+            protein_identified = result_summary.aggregate(protein_identified=Avg('protein_identified'))['protein_identified']
+            precursor_identified = result_summary.aggregate(precursor_identified=Avg('precursor_identified'))['precursor_identified']
+            data.append({
+                "analysis": analysis.id,
+                "experiment": analysis.experiment.id,
+                "protein_identified": protein_identified,
+                "precursor_identified": precursor_identified
+            })
+        return Response(data=data, status=status.HTTP_200_OK)
 
 
-class LogRecordViewSet(viewsets.ReadOnlyModelViewSet, FiltersMixin):
+
+class LogRecordViewSet(viewsets.ReadOnlyModelViewSet, FilterMixin):
     queryset = LogRecord.objects.all()
     serializer_class = LogRecordSerializer
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
@@ -289,3 +435,113 @@ class LogRecordViewSet(viewsets.ReadOnlyModelViewSet, FiltersMixin):
         if worker_id:
             return self.queryset.filter(task__worker_id=worker_id)
         return self.queryset
+
+    def get_object(self):
+        object = super().get_object()
+        return object
+
+class PrecursorReportContentViewSet(viewsets.ReadOnlyModelViewSet, FilterMixin):
+    queryset = PrecursorReportContent.objects.all()
+    serializer_class = PrecursorReportContentSerializer
+    filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
+    pagination_class = LimitOffsetPagination
+    search_fields = ["gene_names", "protein_group", "precursor_id"]
+    ordering_fields = ["id", "gene_names", "protein_group", "precursor_id", "intensity"]
+
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        query = Q()
+        gene_names = self.request.query_params.get("gene_names", None)
+        if gene_names:
+            query &= Q(gene_names__icontains=gene_names)
+        protein_group = self.request.query_params.get("protein_group", None)
+        if protein_group:
+            query &= Q(protein_group__icontains=protein_group)
+        precursor_id = self.request.query_params.get("precursor_id", None)
+        if precursor_id:
+            query &= Q(precursor_id__icontains=precursor_id)
+        file = self.request.query_params.get("file", None)
+        if file:
+            query &= Q(file__id=file)
+        result_summary = self.request.query_params.get("result_summary", None)
+        if result_summary:
+            query &= Q(result_summary__id=result_summary)
+        min_intensity = self.request.query_params.get("min_intensity", None)
+        if min_intensity:
+            query &= Q(intensity__gte=min_intensity)
+        max_intensity = self.request.query_params.get("max_intensity", None)
+        if max_intensity:
+            query &= Q(intensity__lte=max_intensity)
+        analysis = self.request.query_params.get("analysis", None)
+        if analysis:
+            analysis = analysis.split(",")
+            if len(analysis)> 0:
+                query &= Q(result_summary__analysis__id__in=analysis)
+
+        min_protein = self.request.query_params.get("min_protein", None)
+        if min_protein:
+            query &= Q(result_summary__protein_identified__gte=min_protein)
+        max_protein = self.request.query_params.get("max_protein", None)
+        if max_protein:
+            query &= Q(result_summary__protein_identified__lte=max_protein)
+        min_precursor = self.request.query_params.get("min_precursor", None)
+        if min_precursor:
+            query &= Q(result_summary__precursor_identified__gte=min_precursor)
+        max_precursor = self.request.query_params.get("max_precursor", None)
+        if max_precursor:
+            query &= Q(result_summary__precursor_identified__lte=max_precursor)
+
+        return queryset.filter(query)
+
+    def get_object(self):
+        object = super().get_object()
+        return object
+
+class ProteinGroupReportContentViewSet(viewsets.ReadOnlyModelViewSet, FilterMixin):
+    queryset = ProteinGroupReportContent.objects.all()
+    serializer_class = ProteinGroupReportContentSerializer
+    filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
+    pagination_class = LimitOffsetPagination
+    search_fields = ["gene_names", "protein_group"]
+    ordering_fields = ["id", "gene_names", "protein_group", "intensity"]
+
+    def get_queryset(self):
+        query = Q()
+        gene_names = self.request.query_params.get("gene_names", None)
+        if gene_names:
+            query &= Q(gene_names__icontains=gene_names)
+        protein_group = self.request.query_params.get("protein_group", None)
+        if protein_group:
+            query &= Q(protein_group__icontains=protein_group)
+        file = self.request.query_params.get("file", None)
+        if file:
+            query &= Q(file__id=file)
+        result_summary = self.request.query_params.get("result_summary", None)
+        if result_summary:
+            query &= Q(result_summary__id=result_summary)
+        min_intensity = self.request.query_params.get("min_intensity", None)
+        if min_intensity:
+            query &= Q(intensity__gte=min_intensity)
+        max_intensity = self.request.query_params.get("max_intensity", None)
+        if max_intensity:
+            query &= Q(intensity__lte=max_intensity)
+
+        min_protein = self.request.query_params.get("min_protein", None)
+        if min_protein:
+            query &= Q(result_summary__protein_identified__gte=min_protein)
+        max_protein = self.request.query_params.get("max_protein", None)
+        if max_protein:
+            query &= Q(result_summary__protein_identified__lte=max_protein)
+        min_precursor = self.request.query_params.get("min_precursor", None)
+        if min_precursor:
+            query &= Q(result_summary__precursor_identified__gte=min_precursor)
+        max_precursor = self.request.query_params.get("max_precursor", None)
+        if max_precursor:
+            query &= Q(result_summary__precursor_identified__lte=max_precursor)
+
+        return self.queryset.filter(query)
+
+    def get_object(self):
+        object = super().get_object()
+        return object

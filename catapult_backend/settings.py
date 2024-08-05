@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     'channels',
     'dbbackup',
     'django_tasks',
+    'django_filters',
     #'django_rq',
     #'scheduler',
     'django_tasks.backends.database',
