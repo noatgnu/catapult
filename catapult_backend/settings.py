@@ -191,7 +191,7 @@ DBBACKUP_STORAGE_OPTIONS = {
 DBBACKUP_CONNECTORS = {
     'default': {
         'dump_cmd': 'pg_dump --no-owner --no-acl --no-privileges',
-        'restore_cmd': 'pg_restore --no-owner --no-acl --no-privileges',
+        'restore_cmd': 'pg_restore --no-owner --no-acl --no-privileges --if-exists',
     }
 }
 
