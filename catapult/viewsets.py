@@ -339,7 +339,7 @@ class CeleryTaskViewSet(viewsets.ReadOnlyModelViewSet, FilterMixin):
     queryset = CeleryTask.objects.all()
     serializer_class = CeleryTaskSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
-    filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
+    filter_backends = [OrderingFilter, SearchFilter]
     search_fields = ['task_id', 'status']
     ordering_fields = ['created_at', 'updated_at', 'status', 'task_id', 'id']
 
@@ -362,7 +362,7 @@ class CeleryWorkerViewSet(viewsets.ReadOnlyModelViewSet, FilterMixin):
     queryset = CeleryWorker.objects.all()
     serializer_class = CeleryWorkerSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
-    filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
+    filter_backends = [OrderingFilter, SearchFilter]
     search_fields = ['worker_hostname', 'worker_status']
     ordering_fields = ['worker_hostname', 'worker_status']
 
