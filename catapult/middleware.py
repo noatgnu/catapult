@@ -23,6 +23,7 @@ class DemoModeMiddleware:
                 '/api/precursor/'
                 # Add more endpoints as needed
             ]
+            print(request.path)
             if request.path in restricted_endpoints:
                 if request.method != 'GET':
                     return JsonResponse({'error': 'This action is not allowed in demo mode.'}, status=403)
