@@ -1,7 +1,7 @@
 from rest_framework import serializers
 
 from catapult.models import Experiment, File, Analysis, FolderWatchingLocation, UserAPIKey, UploadedFile, CeleryTask, \
-    CeleryWorker, ResultSummary, LogRecord, PrecursorReportContent, ProteinGroupReportContent
+    CeleryWorker, ResultSummary, LogRecord, PrecursorReportContent, ProteinGroupReportContent, CatapultRunConfig
 
 
 class ExperimentSerializer(serializers.ModelSerializer):
@@ -105,3 +105,10 @@ class ProteinGroupReportContentSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProteinGroupReportContent
         fields = ["id", "result_summary", "protein_group", "gene_names", "intensity", "analysis", "file"]
+
+
+class CatapultRunConfigSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        fields = "__all__"
+        model = CatapultRunConfig

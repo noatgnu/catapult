@@ -140,3 +140,5 @@ verbose: 4
 window: null
 xic: null
 xic_theoretical_fr: false
+engine: DIA-NN
+spectronaut_path: null

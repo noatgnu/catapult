@@ -1,12 +1,17 @@
 import os
+import pathlib
 import subprocess
 from datetime import datetime
 
 import yaml
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
+from click import command
 from django.contrib.auth.models import User
 from django.db import models
+from django.db.models import JSONField
+from django_filters import Filter
+from django_filters.fields import Lookup
 from rest_framework_api_key.crypto import KeyGenerator
 from rest_framework_api_key.models import BaseAPIKeyManager, AbstractAPIKey
 from django.db.models.signals import post_save
@@ -17,8 +22,6 @@ from django.conf import settings
 from catapult_backend.settings import DIANN_PATH, CPU_COUNT, DEFAULT_DIANN_PARAMS, DEFAULT_MSCONVERT_PARAMS, \
     MSCONVERT_PATH
 
-
-# Create your models here.
 
 
 class FolderWatchingLocation(models.Model):
@@ -302,37 +305,66 @@ class Analysis(models.Model):
 
     def create_commands_from_config(self, task_id="", hostname="", dry_run=True, all_files=False):
         config = self.config.content
-        commands = [settings.DIANN_PATH]
+        commands = []
         parent_folder = os.path.dirname(self.config.config_file_path)
         if all_files:
             files = self.experiment.files.filter(ready_for_processing=True)
         else:
             files = self.experiment.files.filter(ready_for_processing=True, processing=False)
-        if files.count() == 0:
-            return []
-        else:
-            if not config["f"]:
-                for file in files:
-                    file.processing = True
-                    if not dry_run:
-                        self.generating_quant.add(file)
-                        file.save(update_fields=["processing"])
-                    commands.append(f'--f')
-                    commands.append(file.get_path())
-        if not dry_run:
-            self.processing = True
-            os.makedirs(os.path.join(parent_folder, config["prefix"]), exist_ok=True)
-        if "lib" in config:
-            if config["lib"] is not None:
-                if isinstance(config["lib"], list):
-                    for item in config["lib"]:
-                        commands.append(f'--lib')
-                        file_path = os.path.join(parent_folder, config["prefix"], item)
-                        commands.append(file_path)
-                elif isinstance(config["lib"], str):
-                    commands.append(f'--lib')
-                    file_path = os.path.join(parent_folder, config["prefix"], config["lib"])
-                    commands.append(file_path)
+        if config["engine"] == "DIA-NN":
+            commands = [settings.DIANN_PATH]
+            if files.count() == 0:
+                return []
+            else:
+                if not config["f"]:
+                    for file in files:
+                        file.processing = True
+                        if not dry_run:
+                            self.generating_quant.add(file)
+                            file.save(update_fields=["processing"])
+                        commands.append(f'--f')
+                        commands.append(file.get_path())
+            if not dry_run:
+                self.processing = True
+                os.makedirs(os.path.join(parent_folder, config["prefix"]), exist_ok=True)
+
+            if "lib" in config:
+                if config["engine"] == "DIA-NN":
+                    if config["lib"] is not None:
+                        if isinstance(config["lib"], list):
+                            for item in config["lib"]:
+                                commands.append(f'--lib')
+                                file_path = os.path.join(parent_folder, config["prefix"], item)
+                                commands.append(file_path)
+                        elif isinstance(config["lib"], str):
+                            commands.append(f'--lib')
+                            file_path = os.path.join(parent_folder, config["prefix"], config["lib"])
+                            commands.append(file_path)
+                    else:
+                        if "fasta" in config:
+                            if isinstance(config["fasta"], list):
+                                for item in config["fasta"]:
+                                    commands.append(f'--fasta')
+                                    file_path = os.path.join(parent_folder, item)
+                                    commands.append(file_path)
+                            elif isinstance(config["fasta"], str):
+                                commands.append(f'--fasta')
+                                file_path = os.path.join(parent_folder, config["fasta"])
+                                commands.append(file_path)
+                            if "out-lib" in config:
+                                if isinstance(config["out-lib"], str):
+                                    commands.append(f'--out-lib')
+                                    file_path = os.path.join(parent_folder, config["prefix"], config["out-lib"])
+                                    commands.append(file_path)
+                                else:
+                                    commands.append(f'--out-lib')
+                                    file_path = os.path.join(parent_folder, config["prefix"], "report-lib.tsv")
+                                    commands.append(file_path)
+                            else:
+                                commands.append(f'--out-lib')
+                                file_path = os.path.join(parent_folder, config["prefix"], "report-lib.tsv")
+                                commands.append(file_path)
+
             else:
                 if "fasta" in config:
                     if isinstance(config["fasta"], list):
@@ -357,84 +389,100 @@ class Analysis(models.Model):
                         commands.append(f'--out-lib')
                         file_path = os.path.join(parent_folder, config["prefix"], "report-lib.tsv")
                         commands.append(file_path)
-        else:
-            if "fasta" in config:
-                if isinstance(config["fasta"], list):
-                    for item in config["fasta"]:
-                        commands.append(f'--fasta')
-                        file_path = os.path.join(parent_folder, item)
-                        commands.append(file_path)
-                elif isinstance(config["fasta"], str):
-                    commands.append(f'--fasta')
-                    file_path = os.path.join(parent_folder, config["fasta"])
-                    commands.append(file_path)
-                if "out-lib" in config:
-                    if isinstance(config["out-lib"], str):
-                        commands.append(f'--out-lib')
-                        file_path = os.path.join(parent_folder, config["prefix"], config["out-lib"])
-                        commands.append(file_path)
-                    else:
-                        commands.append(f'--out-lib')
-                        file_path = os.path.join(parent_folder, config["prefix"], "report-lib.tsv")
-                        commands.append(file_path)
-                else:
-                    commands.append(f'--out-lib')
-                    file_path = os.path.join(parent_folder, config["prefix"], "report-lib.tsv")
-                    commands.append(file_path)
 
-        for key, value in config.items():
-            if key not in ["diann_path", "ready", "lib", "fasta", "out_lib", "prefix"]:
-                key = key.replace("_", "-")
-                if value is not None:
-                    if key == "channels":
-                        if isinstance(value, list):
-                            commands.append(f'--{key}')
-                            commands.append("; ".join(value))
-                        elif isinstance(value, str):
-                            commands.append(f'--{key}')
-                            commands.append(value)
-                    elif key == "out":
-                        if isinstance(value, str):
-                            commands.append(f'--out')
-                            file_path = os.path.join(parent_folder, config["prefix"], value)
-                            commands.append(file_path)
-                    elif key == "temp":
-                        if isinstance(value, str):
-                            commands.append(f'--temp')
-                            dir_path = os.path.join(parent_folder, config["prefix"], "temp")
-                            os.makedirs(dir_path, exist_ok=True)
-                            commands.append(dir_path)
-
-                    elif isinstance(value, bool):
-                        if value:
-                            commands.append(f'--{key}')
-                    elif isinstance(value, list):
-                        if key == "unimod":
-                            for item in value:
-                                commands.append(f'--unimod{str(item)}')
-                        elif key == "f":
-                            for f in config["f"]:
-                                watch_folder = self.config.folder_watching_location.folder_path
-                                folder = parent_folder.replace(watch_folder, "")
-                                joined_path = os.path.join(folder, f)
-                                file = files.filter(file_path=joined_path)
-                                if file.exists():
-                                    file_path = os.path.join(parent_folder, f)
-                                    commands.append(f'--f')
-                                    commands.append(file_path)
-                                    for f1 in file:
-                                        f1.processing = True
-                                        if not dry_run:
-                                            self.generating_quant.add(f1)
-                                            f1.save(update_fields=["processing"])
-
-                        else:
-                            for item in value:
+            for key, value in config.items():
+                if key not in ["diann_path", "ready", "lib", "fasta", "out_lib", "prefix"]:
+                    key = key.replace("_", "-")
+                    if value is not None:
+                        if key == "channels":
+                            if isinstance(value, list):
                                 commands.append(f'--{key}')
-                                commands.append(str(item))
+                                commands.append("; ".join(value))
+                            elif isinstance(value, str):
+                                commands.append(f'--{key}')
+                                commands.append(value)
+                        elif key == "out":
+                            if isinstance(value, str):
+                                commands.append(f'--out')
+                                file_path = os.path.join(parent_folder, config["prefix"], value)
+                                commands.append(file_path)
+                        elif key == "temp":
+                            if isinstance(value, str):
+                                commands.append(f'--temp')
+                                dir_path = os.path.join(parent_folder, config["prefix"], "temp")
+                                os.makedirs(dir_path, exist_ok=True)
+                                commands.append(dir_path)
+
+                        elif isinstance(value, bool):
+                            if value:
+                                commands.append(f'--{key}')
+                        elif isinstance(value, list):
+                            if key == "unimod":
+                                for item in value:
+                                    commands.append(f'--unimod{str(item)}')
+                            elif key == "f":
+                                for f in config["f"]:
+                                    watch_folder = self.config.folder_watching_location.folder_path
+                                    folder = parent_folder.replace(watch_folder, "")
+                                    joined_path = os.path.join(folder, f)
+                                    file = files.filter(file_path=joined_path)
+                                    if file.exists():
+                                        file_path = os.path.join(parent_folder, f)
+                                        commands.append(f'--f')
+                                        commands.append(file_path)
+                                        for f1 in file:
+                                            f1.processing = True
+                                            if not dry_run:
+                                                self.generating_quant.add(f1)
+                                                f1.save(update_fields=["processing"])
+
+                            else:
+                                for item in value:
+                                    commands.append(f'--{key}')
+                                    commands.append(str(item))
+                        else:
+                            commands.append(f'--{key}')
+                            commands.append(str(value))
+        elif config["engine"] == "Spectronaut":
+            commands = [settings.SPECTRONAUT_PATH]
+            if self.generating_quant.count() < self.total_files:
+                commands = commands + ["lg", "-se", "Pulsar"]
+                if config["out"]:
+                    output_folder = os.path.join(parent_folder, config["prefix"])
+                    os.makedirs(output_folder, exist_ok=True)
+                    processing_files = []
+                    if files.count() == 0:
+                        return []
                     else:
-                        commands.append(f'--{key}')
-                        commands.append(str(value))
+                        if not config["f"]:
+                            for file in files:
+                                file.processing = True
+                                if not dry_run:
+                                    self.generating_quant.add(file)
+                                    file.save(update_fields=["processing"])
+                                    processing_files.append(file)
+                                commands.append(f'-r')
+                                commands.append(file.get_path())
+
+                    if not dry_run:
+                        if "sa" not in config:
+                            config["sa"] = []
+                        if len(processing_files) > 0:
+                            sa_path = os.path.join(parent_folder, "_".join([str(f.id) for f in processing_files])+".psar")
+                            config["sa"].append(sa_path)
+                            commands.append('-sa')
+                            commands.append(sa_path)
+                            commands.append('-o')
+                            commands.append(output_folder)
+
+
+                if config["fasta"]:
+                    for fasta in config["fasta"]:
+                        commands.append('-fasta')
+                        commands.append(os.path.join(parent_folder, fasta))
+                if not dry_run:
+                    self.config.content = config
+                    self.config.save()
 
         return commands
 

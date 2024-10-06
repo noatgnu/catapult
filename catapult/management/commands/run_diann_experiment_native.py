@@ -36,7 +36,10 @@ class Command(BaseCommand):
     def handle(self, config, experiment_id, output_folder, *args, **options):
         with open(config, "r") as f:
             config = yaml.safe_load(f)
-            commands = [config["diann_path"]]
+            if config["engine"] == "DIA-NN":
+                commands = [config["diann_path"]]
+            elif config["engine"] == "Spectronaut":
+                commands = [config["spectronaut_path"]]
             experiment = None
             files = []
             print(config)
@@ -87,6 +90,11 @@ class Command(BaseCommand):
                     else:
                         commands.append(f'--{key}')
                         commands.append(str(value))
+        if config["engine"] == "Spectronaut":
+            for n, c in enumerate(commands):
+                if c.startswith("--"):
+                    new_c = c.replace("--", "-")
+                    commands[n] = new_c
         print(commands)
 
 

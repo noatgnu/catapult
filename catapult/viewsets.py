@@ -1,7 +1,9 @@
 import json
 from datetime import timedelta
 
+from django.db import transaction
 from django.db.models import Q, Avg, Count, Case, When, IntegerField
+from django.template.smartif import prefix
 from django.utils import timezone
 from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter, SearchFilter
@@ -11,12 +13,14 @@ from rest_framework.parsers import JSONParser, FormParser, MultiPartParser
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from django_filters.views import FilterMixin
+
+from catapult.filters import CatapultRunConfigFilter
 from catapult.models import File, Experiment, Analysis, FolderWatchingLocation, UserAPIKey, UploadedFile, CeleryTask, \
-    CeleryWorker, ResultSummary, LogRecord, PrecursorReportContent, ProteinGroupReportContent
+    CeleryWorker, ResultSummary, LogRecord, PrecursorReportContent, ProteinGroupReportContent, CatapultRunConfig
 from catapult.serializers import FileSerializer, ExperimentSerializer, AnalysisSerializer, \
     FolderWatchLocationSerializer, UserAPIKeySerializer, UploadedFileSerializer, CeleryTaskSerializer, \
     CeleryWorkerSerializer, ResultSummarySerializer, LogRecordSerializer, PrecursorReportContentSerializer, \
-    ProteinGroupReportContentSerializer
+    ProteinGroupReportContentSerializer, CatapultRunConfigSerializer
 from catapult.tasks import run_analysis
 from catapult.util import blank_diann_config
 
@@ -28,9 +32,70 @@ class FileViewSet(viewsets.ModelViewSet, FilterMixin):
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
     ordering_fields = ['created_at', 'updated_at', 'file_path', 'ready_for_processing', 'id']
-    search_fields = ['file_path']
+    search_fields = ['^file_path']
 
+    def create(self, request, *args, **kwargs):
+        file = request.data.get('file')
+        if not file:
+            return Response(status=status.HTTP_400_BAD_REQUEST)
+        file = File.objects.create(file=file)
+        return Response(data=FileSerializer(file, many=False, context={"request": request}).data, status=status.HTTP_201_CREATED)
 
+    def update(self, request, *args, **kwargs):
+        file = self.get_object()
+        payload = request.data
+        for p in payload:
+            if p is not "id":
+                setattr(file, p, payload[p])
+        file.save()
+        return Response(data=FileSerializer(file, many=False, context={"request": request}).data, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["post"])
+    def get_exact_path(self, request):
+        file_path = request.data.get("file_path", None)
+        create = request.data.get("create", False)
+        if not file_path:
+            return Response(status=status.HTTP_400_BAD_REQUEST)
+        files = File.objects.filter(file_path=file_path)
+        if not files:
+            if create:
+                file = File.objects.create(file_path=file_path)
+                return Response(data=FileSerializer(file, many=False, context={"request": request}).data, status=status.HTTP_201_CREATED)
+            else:
+                return Response(status=status.HTTP_404_NOT_FOUND)
+        return Response(data=FileSerializer(files[0], many=False, context={"request": request}).data, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["post"])
+    def get_exact_paths(self, request):
+        file_paths = request.data.get("file_paths", None)
+        create = request.data.get("create", False)
+        if not file_paths:
+            return Response(status=status.HTTP_400_BAD_REQUEST)
+        files = File.objects.filter(file_path__in=file_paths)
+        not_exist_paths = set(file_paths) - set(files.values_list("file_path", flat=True))
+        if not_exist_paths:
+            if create:
+                for path in not_exist_paths:
+                    File.objects.create(file_path=path)
+                files = File.objects.filter(file_path__in=file_paths)
+        return Response(data=FileSerializer(files, many=True, context={"request": request}).data, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["put"])
+    def update_multiple(self, request):
+        files = request.data.get("files", None)
+        if not files:
+            return Response(status=status.HTTP_400_BAD_REQUEST)
+        with transaction.atomic():
+            ids = {f["id"]: f for f in files}
+            original_files = File.objects.filter(id__in=ids)
+            for file in original_files:
+                data = ids[file.id]
+                for key in data:
+                    if key is not "id":
+                        setattr(file, key, data[key])
+                file.save()
+        results = FileSerializer(original_files, many=True, context={"request": request}).data
+        return Response(data=results, status=status.HTTP_200_OK)
 
 class ExperimentViewSet(viewsets.ModelViewSet, FilterMixin):
     queryset = Experiment.objects.all()
@@ -40,6 +105,19 @@ class ExperimentViewSet(viewsets.ModelViewSet, FilterMixin):
     filter_backends = [OrderingFilter, DjangoFilterBackend, SearchFilter]
     ordering_fields = ['id', 'created_at', 'updated_at', 'experiment_name', 'vendor', 'processing_status', 'completed']
     search_fields = ['experiment_name']
+
+    def get_queryset(self):
+        query = Q()
+        vendor = self.request.query_params.get("vendor", None)
+        if vendor:
+            query &= Q(vendor=vendor)
+        processing_status = self.request.query_params.get("processing_status", None)
+        if processing_status:
+            query &= Q(processing_status=processing_status)
+        completed = self.request.query_params.get("completed", None)
+        if completed:
+            query &= Q(completed=completed)
+        return self.queryset.filter(query)
 
     def create(self, request, *args, **kwargs):
         experiment = Experiment.objects.create(
@@ -52,9 +130,9 @@ class ExperimentViewSet(viewsets.ModelViewSet, FilterMixin):
 
     def update(self, request, *args, **kwargs):
         experiment = self.get_object()
-        experiment.experiment_name = request.data["experiment_name"]
-        experiment.vendor = request.data["vendor"]
-        experiment.sample_count = request.data["sample_count"]
+        for key in request.data:
+            if key != "id":
+                setattr(experiment, key, request.data[key])
         experiment.save()
         data = ExperimentSerializer(experiment, many=False, context={"request": request}).data
         return Response(data=data, status=status.HTTP_200_OK)
@@ -63,6 +141,23 @@ class ExperimentViewSet(viewsets.ModelViewSet, FilterMixin):
         experiment = self.get_object()
         experiment.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=False, methods=["put"])
+    def update_multiple(self, request):
+        experiments = request.data.get("experiments", None)
+        if not experiments:
+            return Response(status=status.HTTP_400_BAD_REQUEST)
+        with transaction.atomic():
+            ids = {e["id"]: e for e in experiments}
+            original_experiments = Experiment.objects.filter(id__in=ids)
+            for experiment in original_experiments:
+                data = ids[experiment.id]
+                for key in data:
+                    if key is not "id":
+                        setattr(experiment, key, data[key])
+                experiment.save()
+        results = ExperimentSerializer(original_experiments, many=True, context={"request": request}).data
+        return Response(data=results, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=["get"])
     def get_vendor_choices(self, request):
@@ -99,7 +194,35 @@ class ExperimentViewSet(viewsets.ModelViewSet, FilterMixin):
         result_summary = ResultSummary.objects.filter(analysis__in=analyses)
         return Response(data=ResultSummarySerializer(result_summary, many=True, context={"request": request}).data, status=status.HTTP_200_OK)
 
+    @action(detail=False, methods=["post"])
+    def get_exact_name(self, request):
+        experiment_name = request.data.get("experiment_name", None)
+        created = request.data.get("created", False)
+        if not experiment_name:
+            return Response(status=status.HTTP_400_BAD_REQUEST)
+        experiments = Experiment.objects.filter(experiment_name=experiment_name)
+        if not experiments:
+            if created:
+                experiment = Experiment.objects.create(experiment_name=experiment_name)
+                return Response(data=ExperimentSerializer(experiment, many=False, context={"request": request}).data, status=status.HTTP_201_CREATED)
+            else:
+                return Response(status=status.HTTP_404_NOT_FOUND)
+        return Response(data=ExperimentSerializer(experiments[0], many=False, context={"request": request}).data, status=status.HTTP_200_OK)
 
+    @action(detail=False, methods=["post"])
+    def get_exact_names(self, request):
+        experiment_names = request.data.get("experiment_names", None)
+        created = request.data.get("created", False)
+        if not experiment_names:
+            return Response(status=status.HTTP_400_BAD_REQUEST)
+        experiments = Experiment.objects.filter(experiment_name__in=experiment_names)
+        not_exist_names = set(experiment_names) - set(experiments.values_list("experiment_name", flat=True))
+        if not_exist_names:
+            if created:
+                for name in not_exist_names:
+                    Experiment.objects.create(experiment_name=name)
+                experiments = Experiment.objects.filter(experiment_name__in=experiment_names)
+        return Response(data=ExperimentSerializer(experiments, many=True, context={"request": request}).data, status=status.HTTP_200_OK)
 
 class AnalysisViewSet(viewsets.ModelViewSet, FilterMixin):
     queryset = Analysis.objects.all()
@@ -260,8 +383,6 @@ class AnalysisViewSet(viewsets.ModelViewSet, FilterMixin):
         result_summary = analysis.result_summary.all()
         data = ResultSummarySerializer(result_summary, many=True, context={"request": request}).data
         return Response(data=data, status=status.HTTP_200_OK)
-
-
 
 
 class FolderWatchingLocationViewSet(viewsets.ModelViewSet, FilterMixin):
@@ -545,3 +666,61 @@ class ProteinGroupReportContentViewSet(viewsets.ReadOnlyModelViewSet, FilterMixi
     def get_object(self):
         object = super().get_object()
         return object
+
+
+class CatapultRunConfigViewSet(viewsets.ModelViewSet):
+    queryset = CatapultRunConfig.objects.all()
+    serializer_class = CatapultRunConfigSerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    pagination_class = LimitOffsetPagination
+
+    def get_queryset(self):
+        query = Q()
+        prefix = self.request.query_params.get("prefix", None)
+        if prefix:
+            query &= Q(content__prefix=prefix)
+        experiment = self.request.query_params.get("experiment", None)
+        if experiment:
+            query &= Q(experiment__id=experiment)
+        analysis = self.request.query_params.get("analysis", None)
+        if analysis:
+            query &= Q(analysis__id=analysis)
+        result = self.queryset.filter(query)
+        return result
+
+    def create(self, request, *args, **kwargs):
+        payload = request.data
+        cat = CatapultRunConfig()
+        for p in payload:
+            setattr(cat, p, payload[p])
+        cat.save()
+        data = CatapultRunConfigSerializer(cat, many=False, context={"request": request}).data
+        return Response(data=data, status=status.HTTP_201_CREATED)
+
+    def update(self, request, *args, **kwargs):
+        config = self.get_object()
+        payload = request.data
+        for p in payload:
+            setattr(config, p, payload[p])
+        config.save()
+        data = CatapultRunConfigSerializer(config, many=False, context={"request": request}).data
+        return Response(data=data, status=status.HTTP_200_OK)
+
+    def delete(self, request, *args, **kwargs):
+        config = self.get_object()
+        config.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=["get"])
+    def get_experiment(self, request, pk=None):
+        config = self.get_object()
+        experiment = config.experiment
+        data = ExperimentSerializer(experiment, many=False, context={"request": request}).data
+        return Response(data=data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["get"])
+    def get_analysis(self, request, pk=None):
+        config = self.get_object()
+        analysis = config.analysis
+        data = AnalysisSerializer(analysis, many=False, context={"request": request}).data
+        return Response(data=data, status=status.HTTP_200_OK)

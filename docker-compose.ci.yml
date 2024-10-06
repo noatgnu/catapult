@@ -87,6 +87,31 @@ services:
       dockerfile: ./dockerfiles/Dockerfile-ssl
     volumes:
       - catapultssl:/certs
+  readyBackend:
+    build:
+      context: .
+      dockerfile: ./dockerfiles/Dockerfile
+    container_name: readyBackend
+    command: >
+      sh -c "
+      python manage.py migrate
+      python manage.py dbrestore -i default-b4f07dad3b81-2024-08-06-114541.psql.bin
+      "
+    environment:
+      - POSTGRES_NAME=postgres
+      - POSTGRES_DB=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_HOST=dbcatapult
+      - REDIS_HOST=rediscatapult
+      - CORS_ORIGIN_WHITELIST=http://localhost,http://localhost:4200,http://172.31.0.5
+      - ALLOWED_HOSTS=localhost,172.31.0.5
+      - DEBUG=True
+    depends_on:
+      - catapult
+      - catapultfrontend
+      - dbcatapult
+      - rediscatapult
 networks:
     catapult-net:
 

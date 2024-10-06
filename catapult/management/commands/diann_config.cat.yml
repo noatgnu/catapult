@@ -148,3 +148,8 @@ unimod: # UniMod modification based on id
 cat_ready: false
 cat_total_files: #N # total number of files to be processed
 cat_file_auto: false
+engine: DIA-NN # engine to use (DIA-NN, Spectronaut)
+spectronaut_path: /path/to/spectronaut # path to Spectronaut executable
+sa: [] # Spectronaut search_archive files
+  #- search_archive1.psar
+  #- search_archive2.psar

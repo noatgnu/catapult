@@ -21,7 +21,7 @@ from rest_framework import routers
 from catapult.views import FileBrowserView
 from catapult.viewsets import UserAPIKeyViewSets, ExperimentViewSet, AnalysisViewSet, FileViewSet, UploadedFileViewSet, \
     FolderWatchingLocationViewSet, CeleryTaskViewSet, CeleryWorkerViewSet, LogRecordViewSet, \
-    ProteinGroupReportContentViewSet, PrecursorReportContentViewSet
+    ProteinGroupReportContentViewSet, PrecursorReportContentViewSet, CatapultRunConfigViewSet
 
 router = routers.DefaultRouter()
 
@@ -36,6 +36,7 @@ router.register(r'api/workers', CeleryWorkerViewSet)
 router.register(r'api/logrecords', LogRecordViewSet)
 router.register(r'api/proteingroup', ProteinGroupReportContentViewSet)
 router.register(r'api/precursor', PrecursorReportContentViewSet)
+router.register(r'api/catapultrunconfig', CatapultRunConfigViewSet)
 
 from rest_framework.authtoken import views
 
