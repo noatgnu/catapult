@@ -29,8 +29,6 @@ jobs:
     - name: Set up Docker Compose
       run: docker-compose -f docker-compose.ci.yml up --build -d
 
-    - name: Wait for services to be healthy
+    - name: Check service is healthy
       run: |
-        while ! docker-compose exec readybackend curl -s http://localhost:8000/api/files/1/; do
-          sleep 5
-        done
+        curl http://localhost:8000/files/1/
