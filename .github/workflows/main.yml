@@ -29,10 +29,13 @@ jobs:
     - name: Set up Docker Compose
       run: docker-compose -f docker-compose.ci.yml up --build -d
 
+    - name: Check docker containers
+      run: docker ps
+      
     - name: Migrate
       run: |
-        docker-compose exec readybackend python manage.py makemigrations
-        docker-compose exec readybackend python manage.py migrate
+        docker-compose exec catapult python manage.py makemigrations
+        docker-compose exec catapult python manage.py migrate
 
     - name: Wait for service to be ready
       run: |
