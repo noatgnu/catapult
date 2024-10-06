@@ -48,4 +48,12 @@ jobs:
           sleep 5
         done
 
+    - name: Get User Token && Assign to GitHub Variable
+      run: |
+        docker-compose exec -T catapult python manage.py shell -c "from rest_framework.authtoken.models import Token; print(Token.objects.first().key)" > token.txt
+        TOKEN=$(cat token.txt)
+        echo "TOKEN=$TOKEN" >> $GITHUB_ENV
+        
+        
+
         
