@@ -45,7 +45,7 @@ class FileViewSet(viewsets.ModelViewSet, FilterMixin):
         file = self.get_object()
         payload = request.data
         for p in payload:
-            if p is not "id":
+            if p != "id":
                 setattr(file, p, payload[p])
         file.save()
         return Response(data=FileSerializer(file, many=False, context={"request": request}).data, status=status.HTTP_200_OK)
@@ -91,7 +91,7 @@ class FileViewSet(viewsets.ModelViewSet, FilterMixin):
             for file in original_files:
                 data = ids[file.id]
                 for key in data:
-                    if key is not "id":
+                    if key != "id":
                         setattr(file, key, data[key])
                 file.save()
         results = FileSerializer(original_files, many=True, context={"request": request}).data
@@ -153,7 +153,7 @@ class ExperimentViewSet(viewsets.ModelViewSet, FilterMixin):
             for experiment in original_experiments:
                 data = ids[experiment.id]
                 for key in data:
-                    if key is not "id":
+                    if key != "id":
                         setattr(experiment, key, data[key])
                 experiment.save()
         results = ExperimentSerializer(original_experiments, many=True, context={"request": request}).data
@@ -701,7 +701,8 @@ class CatapultRunConfigViewSet(viewsets.ModelViewSet):
         config = self.get_object()
         payload = request.data
         for p in payload:
-            setattr(config, p, payload[p])
+            if p != "id":
+                setattr(config, p, payload[p])
         config.save()
         data = CatapultRunConfigSerializer(config, many=False, context={"request": request}).data
         return Response(data=data, status=status.HTTP_200_OK)
