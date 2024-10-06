@@ -31,6 +31,6 @@ jobs:
 
     - name: Wait for services to be healthy
       run: |
-        while ! docker-compose exec readyBackend curl -s http://localhost:8000/api/files/1/; do
+        while ! docker-compose exec readybackend curl -s http://localhost:8000/api/files/1/; do
           sleep 5
         done
