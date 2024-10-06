@@ -30,7 +30,9 @@ jobs:
       run: docker-compose -f docker-compose.ci.yml up --build -d
 
     - name: Migrate
-      run: docker-compose exec readybackend python manage.py migrate
+      run: |
+        docker-compose exec readybackend python manage.py makemigrations
+        docker-compose exec readybackend python manage.py migrate
 
     - name: Wait for service to be ready
       run: |
