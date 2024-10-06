@@ -36,6 +36,7 @@ jobs:
       run: |
         docker-compose exec -T catapult python manage.py makemigrations
         docker-compose exec -T catapult python manage.py migrate
+        docker-compose exec -T catapult python manage.py dbrestore --noinput -i default-b4f07dad3b81-2024-08-06-114541.psql.bin
 
     - name: Wait for service to be ready
       run: |
