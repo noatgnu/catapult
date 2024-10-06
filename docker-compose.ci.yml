@@ -87,11 +87,11 @@ services:
       dockerfile: ./dockerfiles/Dockerfile-ssl
     volumes:
       - catapultssl:/certs
-  readyBackend:
+  readybackend:
     build:
       context: .
       dockerfile: ./dockerfiles/Dockerfile
-    container_name: readyBackend
+    container_name: readybackend
     command: >
       sh -c "
       python manage.py migrate
