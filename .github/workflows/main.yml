@@ -1,0 +1,28 @@
+name: CI/CD
+
+on: [push]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    services:
+      docker:
+        image: docker:19.03.12
+        options: --privileged
+        ports:
+          - 5432:5432
+          - 8000:8000
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Set up Docker Compose
+      run: docker-compose -f docker-compose.ci.yml up --build -d
+
+    - name: Wait for services to be healthy
+      run: |
+        while ! docker-compose exec readyBackend curl -s http://localhost:8000/api/files/1/; do
+          sleep 5
+        done
