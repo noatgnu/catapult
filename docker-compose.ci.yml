@@ -94,8 +94,9 @@ services:
     container_name: readybackend
     command: >
       sh -c "
-      python manage.py migrate
-      python manage.py dbrestore -i default-b4f07dad3b81-2024-08-06-114541.psql.bin
+      python manage.py migrate &&
+      python manage.py dbrestore -i default-b4f07dad3b81-2024-08-06-114541.psql.bin &&
+      python manage.py runserver 0.0.0.0:8000
       "
     environment:
       - POSTGRES_NAME=postgres
