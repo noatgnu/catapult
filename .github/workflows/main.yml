@@ -34,8 +34,8 @@ jobs:
       
     - name: Migrate
       run: |
-        docker-compose exec catapult python manage.py makemigrations
-        docker-compose exec catapult python manage.py migrate
+        docker-compose exec -T catapult python manage.py makemigrations
+        docker-compose exec -T catapult python manage.py migrate
 
     - name: Wait for service to be ready
       run: |
