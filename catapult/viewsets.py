@@ -101,10 +101,10 @@ class FileViewSet(viewsets.ModelViewSet, FilterMixin):
                     if p != "id":
                         if p == "folder_watching_location":
                             if data[p]:
-                                setattr(file, p, FolderWatchingLocation.objects.get(id=payload[p]))
+                                setattr(file, p, FolderWatchingLocation.objects.get(id=data[p]))
                         elif p == "experiment":
                             if data[p]:
-                                setattr(file, p, Experiment.objects.get(id=payload[p]))
+                                setattr(file, p, Experiment.objects.get(id=data[p]))
                         else:
                             setattr(file, p, data[p])
                 file.save()
@@ -407,6 +407,39 @@ class FolderWatchingLocationViewSet(viewsets.ModelViewSet, FilterMixin):
     filter_backends = [DjangoFilterBackend]
 
 
+    def get_queryset(self):
+        return self.queryset
+
+    def create(self, request, *args, **kwargs):
+        if not request.user.is_staff:
+            return Response(status=status.HTTP_401_UNAUTHORIZED)
+        payload = request.data
+        folder = FolderWatchingLocation()
+        if not payload["folder_path"]:
+            return Response(status=status.HTTP_400_BAD_REQUEST)
+        if not payload["vendor"]:
+            return Response(status=status.HTTP_400_BAD_REQUEST)
+        for p in payload:
+            if p != "id":
+                setattr(folder, p, payload[p])
+        folder.save()
+        return Response(data=FolderWatchLocationSerializer(folder, many=False, context={"request": request}).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=["post"])
+    def get_exact_path(self, request):
+        path = request.data.get("folder_path", None)
+        if not path:
+            return Response(status=status.HTTP_400_BAD_REQUEST)
+        folder = FolderWatchingLocation.objects.filter(folder_path=path)
+        if not folder:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        return Response(data=FolderWatchLocationSerializer(folder[0], many=False, context={"request": request}).data, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["get"])
+    def get_all_paths(self, request):
+        folders = FolderWatchingLocation.objects.all()
+        return Response(data=FolderWatchLocationSerializer(folders, many=True, context={"request": request}).data, status=status.HTTP_200_OK)
+
 class UserAPIKeyViewSets(viewsets.ModelViewSet, FilterMixin):
     queryset = UserAPIKey.objects.all()
     serializer_class = UserAPIKeySerializer
@@ -704,7 +737,6 @@ class CatapultRunConfigViewSet(viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         payload = request.data
-        print(payload)
         cat = CatapultRunConfig()
         for p in payload:
             if p != "id":
