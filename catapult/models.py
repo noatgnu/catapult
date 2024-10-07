@@ -599,102 +599,103 @@ class CatapultRunConfig(models.Model):
         self.save(update_fields=["content"])
         if self.analysis.exists():
             self.analysis.all().delete()
-        parent_folder = os.path.dirname(self.config_file_path).replace(self.folder_watching_location.folder_path, "")
-        analysis = Analysis.objects.create(
-            experiment=self.experiment,
-            analysis_path=self.config_file_path,
-            config=self
-        )
-        if "prefix" in self.content:
-            if self.content["prefix"] is None:
+        if self.folder_watching_location:
+            parent_folder = os.path.dirname(self.config_file_path).replace(self.folder_watching_location.folder_path, "")
+            analysis = Analysis.objects.create(
+                experiment=self.experiment,
+                analysis_path=self.config_file_path,
+                config=self
+            )
+            if "prefix" in self.content:
+                if self.content["prefix"] is None:
+                    self.content["prefix"] = str(self.id)
+            else:
                 self.content["prefix"] = str(self.id)
-        else:
-            self.content["prefix"] = str(self.id)
-        if "lib" in self.content:
-            if self.content["lib"] is not None:
+            if "lib" in self.content:
+                if self.content["lib"] is not None:
 
-                if isinstance(self.content["lib"], list):
-                    if len(self.content["lib"]) > 0:
-                        for lib in self.content["lib"]:
-                            file_path = os.path.join(parent_folder, lib)
-                            spectral_libraries = SpectralLibrary.objects.filter(file_path=file_path, config=self)
-                            if not spectral_libraries.exists():
-                                spectral_library = SpectralLibrary.objects.create(
-                                    file_path=file_path,
-                                    config=self,
-                                    size=0
-                                )
+                    if isinstance(self.content["lib"], list):
+                        if len(self.content["lib"]) > 0:
+                            for lib in self.content["lib"]:
+                                file_path = os.path.join(parent_folder, lib)
+                                spectral_libraries = SpectralLibrary.objects.filter(file_path=file_path, config=self)
+                                if not spectral_libraries.exists():
+                                    spectral_library = SpectralLibrary.objects.create(
+                                        file_path=file_path,
+                                        config=self,
+                                        size=0
+                                    )
 
+                            analysis.analysis_type = "diann-spectral"
+                            self.spectral_library_required = True
+                    elif isinstance(self.content["lib"], str):
+                        file_path = os.path.join(parent_folder, self.content["lib"])
+                        spectral_libraries = SpectralLibrary.objects.filter(file_path=file_path, config=self)
+                        if not spectral_libraries.exists():
+                            spectral_library = SpectralLibrary.objects.create(
+                                file_path=file_path,
+                                config=self,
+                                size=0
+                            )
                         analysis.analysis_type = "diann-spectral"
                         self.spectral_library_required = True
-                elif isinstance(self.content["lib"], str):
-                    file_path = os.path.join(parent_folder, self.content["lib"])
-                    spectral_libraries = SpectralLibrary.objects.filter(file_path=file_path, config=self)
-                    if not spectral_libraries.exists():
-                        spectral_library = SpectralLibrary.objects.create(
-                            file_path=file_path,
-                            config=self,
-                            size=0
-                        )
-                    analysis.analysis_type = "diann-spectral"
-                    self.spectral_library_required = True
+                    else:
+                        analysis.analysis_type = "diann-create"
                 else:
                     analysis.analysis_type = "diann-create"
             else:
                 analysis.analysis_type = "diann-create"
-        else:
-            analysis.analysis_type = "diann-create"
-        if "fasta" in self.content:
-            if self.content["fasta"] is not None:
+            if "fasta" in self.content:
+                if self.content["fasta"] is not None:
 
-                if isinstance(self.content["fasta"], list):
-                    if len(self.content["fasta"]) > 0:
-                        for fasta in self.content["fasta"]:
-                            file_path = os.path.join(parent_folder, fasta)
-                            fasta_files = FastaFile.objects.filter(file_path=file_path, config=self)
-                            if not fasta_files.exists():
-                                fasta_file = FastaFile.objects.create(
-                                    file_path=file_path,
-                                    config=self,
-                                    size=0
-                                )
-                            self.fasta_required = True
-                elif isinstance(self.content["fasta"], str):
-                    file_path = os.path.join(parent_folder, self.content["fasta"])
-                    fasta_files = FastaFile.objects.filter(file_path=file_path, config=self)
-                    if not fasta_files.exists():
-                        fasta_file = FastaFile.objects.create(
-                            file_path=file_path,
-                            config=self,
-                            size=0
-                        )
-                        self.fasta_required = True
-
-        self.save(update_fields=["content", "fasta_required", "spectral_library_required"])
-        if "f" in self.content:
-            if self.content["f"]:
-                if isinstance(self.content["f"], list):
-                    analysis.total_files = len(self.content["f"])
-                    analysis.save()
-                    for f in self.content["f"]:
-                        file_path = os.path.join(parent_folder, f)
-                        experiment_files = File.objects.filter(experiment=self.experiment, file_path=file_path)
-                        if not experiment_files.exists():
-                            file = File.objects.create(
+                    if isinstance(self.content["fasta"], list):
+                        if len(self.content["fasta"]) > 0:
+                            for fasta in self.content["fasta"]:
+                                file_path = os.path.join(parent_folder, fasta)
+                                fasta_files = FastaFile.objects.filter(file_path=file_path, config=self)
+                                if not fasta_files.exists():
+                                    fasta_file = FastaFile.objects.create(
+                                        file_path=file_path,
+                                        config=self,
+                                        size=0
+                                    )
+                                self.fasta_required = True
+                    elif isinstance(self.content["fasta"], str):
+                        file_path = os.path.join(parent_folder, self.content["fasta"])
+                        fasta_files = FastaFile.objects.filter(file_path=file_path, config=self)
+                        if not fasta_files.exists():
+                            fasta_file = FastaFile.objects.create(
                                 file_path=file_path,
-                                experiment=self.experiment,
-                                folder_watching_location=self.folder_watching_location,
-                                size=os.path.getsize(f),
-                                analysis=analysis
+                                config=self,
+                                size=0
                             )
+                            self.fasta_required = True
+
+            self.save(update_fields=["content", "fasta_required", "spectral_library_required"])
+            if "f" in self.content:
+                if self.content["f"]:
+                    if isinstance(self.content["f"], list):
+                        analysis.total_files = len(self.content["f"])
+                        analysis.save()
+                        for f in self.content["f"]:
+                            file_path = os.path.join(parent_folder, f)
+                            experiment_files = File.objects.filter(experiment=self.experiment, file_path=file_path)
+                            if not experiment_files.exists():
+                                file = File.objects.create(
+                                    file_path=file_path,
+                                    experiment=self.experiment,
+                                    folder_watching_location=self.folder_watching_location,
+                                    size=os.path.getsize(f),
+                                    analysis=analysis
+                                )
+                else:
+                    if "cat_total_files" in self.content:
+                        analysis.total_files = self.content["cat_total_files"]
+                        analysis.save(update_fields=["total_files"])
             else:
                 if "cat_total_files" in self.content:
                     analysis.total_files = self.content["cat_total_files"]
                     analysis.save(update_fields=["total_files"])
-        else:
-            if "cat_total_files" in self.content:
-                analysis.total_files = self.content["cat_total_files"]
-                analysis.save(update_fields=["total_files"])
 
 class ResultSummary(models.Model):
     """

@@ -704,6 +704,7 @@ class CatapultRunConfigViewSet(viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         payload = request.data
+        print(payload)
         cat = CatapultRunConfig()
         for p in payload:
             if p != "id":
@@ -718,6 +719,7 @@ class CatapultRunConfigViewSet(viewsets.ModelViewSet):
                         setattr(cat, p, FolderWatchingLocation.objects.get(id=payload[p]))
                 else:
                     setattr(cat, p, payload[p])
+
         cat.save()
         data = CatapultRunConfigSerializer(cat, many=False, context={"request": request}).data
         return Response(data=data, status=status.HTTP_201_CREATED)

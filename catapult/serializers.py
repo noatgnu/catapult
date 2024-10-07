@@ -110,5 +110,5 @@ class ProteinGroupReportContentSerializer(serializers.ModelSerializer):
 class CatapultRunConfigSerializer(serializers.ModelSerializer):
 
     class Meta:
-        fields = "__all__"
+        fields = ["id", "experiment", "config_file_path", "content", "folder_watching_location", "fasta_ready", "fasta_required", "spectral_library_ready", "spectral_library_required"]
         model = CatapultRunConfig
