@@ -46,7 +46,14 @@ class FileViewSet(viewsets.ModelViewSet, FilterMixin):
         payload = request.data
         for p in payload:
             if p != "id":
-                setattr(file, p, payload[p])
+                if p == "folder_watching_location":
+                    if payload[p]:
+                        setattr(file, p, FolderWatchingLocation.objects.get(id=payload[p]))
+                elif p == "experiment":
+                    if payload[p]:
+                        setattr(file, p, Experiment.objects.get(id=payload[p]))
+                else:
+                    setattr(file, p, payload[p])
         file.save()
         return Response(data=FileSerializer(file, many=False, context={"request": request}).data, status=status.HTTP_200_OK)
 
@@ -90,9 +97,16 @@ class FileViewSet(viewsets.ModelViewSet, FilterMixin):
             original_files = File.objects.filter(id__in=ids)
             for file in original_files:
                 data = ids[file.id]
-                for key in data:
-                    if key != "id":
-                        setattr(file, key, data[key])
+                for p in data:
+                    if p != "id":
+                        if p == "folder_watching_location":
+                            if data[p]:
+                                setattr(file, p, FolderWatchingLocation.objects.get(id=payload[p]))
+                        elif p == "experiment":
+                            if data[p]:
+                                setattr(file, p, Experiment.objects.get(id=payload[p]))
+                        else:
+                            setattr(file, p, data[p])
                 file.save()
         results = FileSerializer(original_files, many=True, context={"request": request}).data
         return Response(data=results, status=status.HTTP_200_OK)
@@ -702,7 +716,17 @@ class CatapultRunConfigViewSet(viewsets.ModelViewSet):
         payload = request.data
         for p in payload:
             if p != "id":
-                setattr(config, p, payload[p])
+                if p == "experiment":
+                    if payload[p]:
+                        setattr(config, p, Experiment.objects.get(id=payload[p]))
+                elif p == "analysis":
+                    if payload[p]:
+                        setattr(config, p, Analysis.objects.get(id=payload[p]))
+                elif p == "folder_watching_location":
+                    if payload[p]:
+                        setattr(config, p, FolderWatchingLocation.objects.get(id=payload[p]))
+                else:
+                    setattr(config, p, payload[p])
         config.save()
         data = CatapultRunConfigSerializer(config, many=False, context={"request": request}).data
         return Response(data=data, status=status.HTTP_200_OK)
