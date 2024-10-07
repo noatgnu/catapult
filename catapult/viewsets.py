@@ -706,7 +706,18 @@ class CatapultRunConfigViewSet(viewsets.ModelViewSet):
         payload = request.data
         cat = CatapultRunConfig()
         for p in payload:
-            setattr(cat, p, payload[p])
+            if p != "id":
+                if p == "experiment":
+                    if payload[p]:
+                        setattr(cat, p, Experiment.objects.get(id=payload[p]))
+                elif p == "analysis":
+                    if payload[p]:
+                        setattr(cat, p, Analysis.objects.get(id=payload[p]))
+                elif p == "folder_watching_location":
+                    if payload[p]:
+                        setattr(cat, p, FolderWatchingLocation.objects.get(id=payload[p]))
+                else:
+                    setattr(cat, p, payload[p])
         cat.save()
         data = CatapultRunConfigSerializer(cat, many=False, context={"request": request}).data
         return Response(data=data, status=status.HTTP_201_CREATED)
