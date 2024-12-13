@@ -1,0 +1,228 @@
+version: 0.0.1
+cat_ready: false
+cat_total_files: #N # total number of files to be processed
+cat_file_auto: false
+on_receive_raw_files:
+  initial:
+  finished:
+    - diann
+on_search:
+  initial:
+  finished:
+msconvert:
+  filelist: null # specify text file containing filenames
+  outdir: '.' # set output directory ('-' for stdout, '.' for current directory)
+  config: null # configuration file (optionName=value)
+  outfile: null # Override the name of output file
+  ext: null # set extension for output files [mzML|mzXML|mgf|txt|mz5|mzMLb]
+  mzML: false # write mzML format [default]
+  mzXML: false # write mzXML format
+  mz5: false # write mz5 format
+  mzMLb: false # write mzMLb format
+  mzMLbChunkSize: 1048576 # mzMLb dataset chunk size in bytes
+  mzMLbCompressionLevel: 4 # mzMLb GZIP compression level (0-9)
+  mgf: false # write Mascot generic format
+  text: false # write ProteoWizard internal text format
+  ms1: false # write MS1 format
+  cms1: false # write CMS1 format
+  ms2: false # write MS2 format
+  cms2: false # write CMS2 format
+  verbose: false # display detailed progress information
+  binaryEncoding: 64 # set default binary encoding to 64-bit precision [default]
+  mzPrecision: 64 # encode m/z values in 64-bit precision [default]
+  intenPrecision: 32 # encode intensity values in 32-bit precision [default]
+  mzTruncation: 0 # Number of mantissa precision bits to truncate for mz and rt, or if -1 will store integers only
+  intenTruncation: 0 # Number of mantissa precision bits to truncate for intensities, or if -1 will store integers only
+  mzDelta: false # apply delta prediction to mz and rt values
+  intenDelta: false # apply delta prediction to intensity values
+  mzLinear: false # apply linear prediction to mz and rt values
+  intenLinear: false # apply linear prediction to intensity values
+  noindex: false # do not write index
+  contactInfo: null # filename for contact info
+  zlib: true # use zlib compression for binary data (add =off to disable compression)
+  numpressLinear: 2.0e-09 # use numpress linear prediction compression for binary mz and rt data
+  numpressLinearAbsTol: -1 # desired absolute tolerance for linear numpress prediction
+  numpressPic: false # use numpress positive integer compression for binary intensities
+  numpressSlof: 2.0e-04 # use numpress short logged float compression for binary intensities
+  numpressAll: false # same as --numpressLinear --numpressSlof
+  gzip: false # gzip entire output file (adds .gz to filename)
+  filter: null # add a spectrum list filter
+  chromatogramFilter: null # add a chromatogram list filter
+  merge: false # create a single output file from multiple input files
+  runIndexSet: null # for multi-run sources, select only the specified run indices
+  simAsSpectra: false # write selected ion monitoring as spectra, not chromatograms
+  srmAsSpectra: false # write selected reaction monitoring as spectra, not chromatograms
+  combineIonMobilitySpectra: false # write all ion mobility or Waters SONAR bins/scans in a frame/block as one spectrum
+  ddaProcessing: false # combine MS2 spectra referring to the same precursor and survey scan
+  ignoreCalibrationScans: false # do not process calibration scans
+  acceptZeroLengthSpectra: false # filter out empty spectra
+  ignoreMissingZeroSamples: false # do not include zero samples in profile data
+  ignoreUnknownInstrumentError: false # if true, if an instrument cannot be determined from a vendor file, it will not be an error
+  stripLocationFromSourceFiles: false # if true, sourceFile elements will be stripped of location information
+  stripVersionFromSoftware: false # if true, software elements will be stripped of version information
+  singleThreaded: 2 # if true, reading and writing spectra will be done on a single thread
+  continueOnError: false # if true, if an error is seen when enumerating a spectrum or chromatogram, it is skipped
+search:
+  diann:
+    command:
+    diann_path: /path/to/diann # path to DIA-NN executable
+    channel_run_norm: false # normalisation of multiplexed samples in run-specific manner
+    channel_spec_norm: false # normalisation of multiplexed samples in channel-specific manner
+    channels: [ ] #[] # specify channel masses
+    #- label_group,channel_name,sites,mass1:mass2:...
+    #- label_group,channel_name,sites,mass1:mass2:...
+    clear_mods: false #true # makes DIA-NN 'forget' all built-in modification (PTM) names
+    compact_report: false #true # provide less information in the main .tsv report
+    cont_quant_exclude: false #tag # exclude peptides with specified tag from normalisation/quantification
+    convert: false #true # convert mass spec files to .dia format
+    cut: K*,R* # specify cleavage specificity for in silico digest
+    decoy_channel: null #channel # specify the decoy channel masses
+    decoys_preserve_spectrum: false #true # decoy peptides already annotated with 'decoy' spectra
+    dir: null #folder # folder containing raw files to be processed
+    direct_quant: false #true # disable QuantUMS and use legacy DIA-NN quantification algorithms
+    dl_no_im: false #true # prediction of ion mobilities will not be performed
+    dl_no_rt: false #true # prediction of retention times will not be performed
+    duplicate_proteins: false #true # do not skip entries with duplicate IDs
+    exact_fdr: false #true # disable approximate FDR estimation
+    export_quant: false #true # add fragment quantities and quality information to .parquet output report
+    ext: null #string # add string to the end of each file name
+    f: #[] # specify raw files to be processed
+      - filename1.raw
+      - filename2.raw
+    fasta: #[] # specify sequence databases
+      - database1.fasta
+      #- database2.fasta
+    fasta_filter: null #filename.txt # filter sequence database with specified sequences
+    fasta_search: true # perform an in silico digest of the sequence database
+    fixed_mod: [ ] #[] # specify fixed modifications
+    #- mass,sites,optional_label
+    force_swissprot: false # only consider SwissProt sequences
+    foreign_decoys: false # decoys generated by another tool
+    full_unimod: false # load complete UniMod modification database
+    gen_spec_lib: true # generate a spectral library
+    gen_fr_restriction: false # annotate library with fragment exclusion information
+    global_mass_cal: false # disable RT-dependent mass calibration
+    global_norm: false # use simple global normalisation
+    high_acc: false # optimise QuantUMS settings for maximum accuracy
+    ids_to_names: false # use protein sequence IDs as protein names and genes
+    il_eq: false # isoleucine and leucine considered equivalent
+    im_window: null # fix IM extraction window to a specific value
+    im_window_factor: null # control minimum size of the IM extraction window
+    individual_mass_acc: true # determine mass accuracies independently for different runs
+    individual_reports: false # create separate output report for each run
+    individual_windows: true # determine scan window independently for different runs
+    int_removal: null # disable removal of interfering precursors
+    lib: [ ]
+    #- library1.tsv
+    #- library2.tsv
+    lib_fixed_mod: null #name # apply fixed modification to spectral library
+    library_headers: [ ]
+    #- name_1
+    #- name_2
+    mass_acc: 20 # set MS2 mass accuracy to N ppm
+    mass_acc_cal: null # set mass accuracy during calibration phase to N ppm
+    mass_acc_ms1: 20 # set MS1 mass accuracy to N ppm
+    matrices: true # output quantities matrices
+    matrix_ch_qvalue: null # set channel q-value for output matrices
+    matrix_qvalue: null  # set q-value for output matrices
+    matrix_tr_qvalue: null # set translated q-value for output matrices
+    matrix_spec_q: false # use run-specific protein q-value filtering
+    max_fr: null  # set maximum number of fragments per precursors in spectral library
+    max_fr_mz: 1800 # set maximum fragment m/z for library generation
+    max_pep_len: 30 # set maximum precursor length for library generation
+    max_pr_charge: 4 # set maximum precursor charge for library generation
+    max_pr_mz: 1800 # set maximum precursor m/z for library generation
+    mbr_fix_settings: false # use same settings to process all runs during second MBR pass
+    met_excision: false # enable protein N-term methionine excision as variable modification
+    min_fr: null # set minimum number of fragments per precursors in spectral library
+    min_fr_mz: 200 # set minimum fragment m/z for library generation
+    min_peak: null # set minimum peak height to consider
+    min_pep_len: 7 # set minimum precursor length for library generation
+    min_pr_charge: 1 # set minimum precursor charge for library generation
+    min_pr_mz: 300 # set minimum precursor m/z for library generation
+    missed_cleavages: 2 # set maximum number of missed cleavages
+    mod: [ ]
+    #- name,mass,optional_label
+    mod_no_scoring: null # disable scoring of the specified modification
+    mod_only: false # only consider peptides with specified modifications
+    no_calibration: false # disable mass calibration
+    no_cut_after_mod: name # discard peptides with in silico cuts after residues bearing modification
+    no_decoy_channel: false # disable decoy channel for q-value calculation
+    no_fr_selection: false # disable selection of fragments for quantification
+    no_im_window: false # disable IM-windowed search
+    no_isotopes: false # do not extract chromatograms for heavy isotopologues
+    no_lib_filter: false # use input library 'as is'
+    no_main_report: false # do not produce main report
+    no_maxlfq: false # disable MaxLFQ for protein quantification
+    no_norm: false # disable cross-run normalisation
+    no_peptidoforms: false # disable automatic activation of peptidoform scoring
+    no_prot_inf: false # disable protein inference
+    no_quant_files: false # do not save .quant files to disk
+    no_rt_window: false # disable RT-windowed search
+    no_stats: false # disable generation of the stats file
+    no_swissprot: false # do not prefer SwissProt proteins for protein groups
+    original_mods: false # disable automatic conversion of known modifications to UniMod names
+    out: filename.tsv # name of the main output report
+    out_lib: filename.tsv # name of spectral library to be generated
+    out_lib_copy: true # copy spectral library used into output folder
+    out_measured_rt: false # save raw empirical retention times in spectral library
+    peak_translation: false # take advantage of co-elution of isotopologues
+    peptidoforms: false # enable peptidoform confidence scoring
+    pg_level: null  # control protein inference mode
+    predict_n_frag: null  # set maximum number of fragments predicted by deep learning predictor
+    predictor: true # perform deep learning-based prediction
+    prefix: null # add string at the beginning of each file name
+    pr_filter: null # filter FASTA digest to only include specified precursors
+    ptm_qvalues: false # enable legacy PTM-specific q-value calculation
+    qvalue: 0.01 # set precursor-level q-value filtering threshold
+    quant_acc: null # set precision-accuracy balance for QuantUMS
+    quant_fr: null # set number of top fragment ions for legacy quantification mode
+    quick_mass_acc: false # use fast heuristical algorithm for MS2 mass accuracy setting
+    quant_no_ms1: false # instruct QuantUMS not to use MS1 quantities directly
+    quant_sel_runs: null # train QuantUMS parameters on N automatically chosen runs
+    quant_train_runs: null # train QuantUMS parameters on runs with indices in range N1 to N2
+    reanalyse: true # enable MBR
+    reannotate: false # reannotate spectral library with protein information
+    ref: filename.tsv # specify special spectral library for calibration
+    regular_swath: false # analyse all runs as non-Scanning SWATH runs
+    relaxed_prot_inf: false # use heuristical protein inference algorithm
+    report_lib_info: false # add extra library information to main output report
+    restrict_fr: false # restrict some fragments from quantification
+    scanning_swath: false # analyse all runs as Scanning SWATH runs
+    semi: false # match peptides to proteins with one specific and one non-specific cut
+    skip_unknown_mods: false # ignore peptides with unsupported modifications
+    smart_profiling: true # enable intelligent algorithm for spectra extraction
+    species_genes: true # add organism identifier to gene names
+    species_ids: true # add organism identifier to sequence ids/protein isoform ids
+    sptxt_acc: null # set fragment filtering mass accuracy for .sptxt/.msp libraries
+    tag_to_ids: null # incorporate tag in protein sequence ids, names, genes
+    temp: folder # specify Temp/.dia directory
+    threads: 8 # number of CPU threads to use
+    tims_min_int: null # set minimum peak intensity for loading timsTOF data
+    tims_ms1_cycle: null # merge MS/MS spectra from N consecutive cycles
+    tims_scan: false # enable support for diagonal scanning methods on timsTOF
+    tims_skip_errors: false # ignore errors when loading dia-PASEF data
+    use_quant: true # use existing .quant files if available
+    verbose: 4 # set level of detail
+    window: null # set extraction window size
+    var_mod:
+      - UniMod:35,15.994915,M
+    var_mods: 1
+    xic: null # set XIC extraction window size
+    xic_theoretical_fr: false # use theoretical fragment masses for XIC extraction
+    unimod: # UniMod modification based on id
+      - 4
+  spectronaut:
+    command:
+    spectronaut_path: /path/to/spectronaut # path to Spectronaut executable
+    f: #[] # specify raw files to be processed
+      - filename1.raw
+      - filename2.raw
+    fasta: #[] # specify sequence databases
+      - database1.fasta
+    sa: [] # Spectronaut search_archive files
+      #- search_archive1.psar
+      #- search_archive2.psar
+    out: filename.tsv # name of the main output report
+    temp: folder
+    lib: []
